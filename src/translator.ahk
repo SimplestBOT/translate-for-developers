@@ -67,7 +67,6 @@ gMenuHotkeyLbl := ""
 gMenuProviderLbl := ""
 gSrcMenuLbl    := ""
 gTgtMenuLbl    := ""
-gLastLangMenu  := "src"
 gTrayTitles    := []
 gConfigFile    := A_ScriptDir . "\config.conf"
 hotkeyConf     := A_ScriptDir . "\hotkey.conf"
@@ -330,25 +329,17 @@ BuildLangMenu(type) {
     for id, info in gLangs {
         if type = "tgt" and id = "auto"
             continue
-        langMenu.Add(info[1], MakeLangHandler(id))
+        langMenu.Add(info[1], MakeLangHandler(id, type))
     }
     current := type = "src" ? gSourceLang : gTargetLang
     langMenu.Check(LangDisplay(current))
     return langMenu
 }
 ; 闭包捕获修正：通过函数参数传值，避免循环变量共享
-MakeLangHandler(id) {
-    if id = "auto"
-        return (*) => SetSourceLang("auto")
-    return (*) => SetLangFromMenu(id)
-}
-; 语言菜单点击分发（源/目标共用，由打开的子菜单决定）
-SetLangFromMenu(id) {
-    global
-    if gLastLangMenu = "src"
-        SetSourceLang(id)
-    else
-        SetTargetLang(id)
+MakeLangHandler(id, type) {
+    if type = "src"
+        return (*) => SetSourceLang(id)
+    return (*) => SetTargetLang(id)
 }
 SetSourceLang(id) {
     global
