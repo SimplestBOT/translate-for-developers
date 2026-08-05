@@ -63,10 +63,10 @@ Ahk2Exe.exe /in src\translator.ahk /out translator.exe /icon src\icon.ico /base 
 translate-for-developers/
 ├── README.md
 ├── LICENSE
-├── .gitignore          # 已排除 config.conf / hotkey.conf（含密钥，勿提交）
+├── .gitignore
 └── src/
-    ├── translator.ahk  # 主脚本（AutoHotkey v2）
-    └── icon.ico        # 程序图标（白底黑 T）
+    ├── translator.ahk
+    └── icon.ico
 ```
 
 ## 常见问题
