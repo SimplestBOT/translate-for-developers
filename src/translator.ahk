@@ -94,30 +94,87 @@ TranslateText(text) {
 ;=============================================================
 TranslateMyMemory(text) {
     global
-    url := "https://api.mymemory.translated.net/get?q=" . UrlEncode(text) . "&langpair=en|" . gTargetLang
-    try {
-        http := ComObject("WinHttp.WinHttpRequest.5.1")
-        http.Open("GET", url, false)
-        http.SetTimeouts(gApiTimeout, gApiTimeout, gApiTimeout, gApiTimeout)
-        http.Send()
-        status := http.Status
-        if status != 200 {
-            ShowError("MyMemory 返回错误（HTTP " . status . "）。`n请检查网络后重试。")
+    ; MyMemory 免费 API 单次请求限 500 字符，长文本按字符分片翻译
+    parts := SplitTextByChars(text, 450)
+    result := ""
+    for part in parts {
+        url := "https://api.mymemory.translated.net/get?q=" . UrlEncode(part) . "&langpair=en|" . gTargetLang
+        try {
+            http := ComObject("WinHttp.WinHttpRequest.5.1")
+            http.Open("GET", url, false)
+            http.SetTimeouts(gApiTimeout, gApiTimeout, gApiTimeout, gApiTimeout)
+            http.Send()
+            status := http.Status
+            if status != 200 {
+                ShowError("MyMemory 返回错误（HTTP " . status . "）。`n请检查网络后重试。")
+                return ""
+            }
+            body := http.ResponseText
+            dq := Chr(34)
+            if RegExMatch(body, dq . "translatedText" . dq . ":" . dq . "(.*?)" . dq, &m) {
+                result .= DecodeUnicode(m[1])
+            } else {
+                if RegExMatch(body, dq . "responseDetails" . dq . ":" . dq . "(.*?)" . dq, &e)
+                    ShowError("MyMemory 翻译失败：" . DecodeUnicode(e[1]))
+                else
+                    ShowError("MyMemory 翻译失败：无法解析服务响应。")
+                return ""
+            }
+        } catch as err {
+            ShowError("网络请求失败：" . err.Message)
             return ""
         }
-        body := http.ResponseText
-        if RegExMatch(body, '"translatedText":"(.*?)"', &m)
-            return DecodeUnicode(m[1])
-        if RegExMatch(body, '"responseDetails":"(.*?)"', &e)
-            ShowError("MyMemory 翻译失败：" . DecodeUnicode(e[1]))
-        else
-            ShowError("MyMemory 翻译失败：无法解析服务响应。")
-        return ""
-    } catch as err {
-        ShowError("网络请求失败：" . err.Message)
-        return ""
     }
+    return result
 }
+
+;=============================================================
+; 按字符数分割长文本（MyMemory 免费 API 单次限 500 字符）
+; 优先在换行处切分，保持行完整
+;=============================================================
+SplitTextByChars(text, maxChars) {
+    parts := []
+    current := ""
+    lines := StrSplit(text, "`n")
+    for line in lines {
+        lineLen := StrLen(line)
+        if lineLen > maxChars {
+            if current != "" {
+                parts.Push(current)
+                current := ""
+            }
+            for ch in StrSplit(line) {
+                if StrLen(current) + 1 > maxChars and current != "" {
+                    parts.Push(current)
+                    current := ""
+                }
+                current .= ch
+            }
+            if current != "" {
+                parts.Push(current)
+                current := ""
+            }
+        } else {
+            if current = ""
+                current := line
+            else
+                current .= "`n" . line
+            if StrLen(current) > maxChars {
+                parts.Push(current)
+                current := ""
+            }
+        }
+    }
+    if current != ""
+        parts.Push(current)
+    return parts
+}
+
+;=============================================================
+; 按字符数分割长文本（MyMemory 免费 API 单次限 500 字符）
+; 优先在换行处切分，保持行完整
+;=============================================================
+
 
 ;=============================================================
 ; 百度翻译开放平台（免费标准版，需注册 https://fanyi-api.baidu.com）
