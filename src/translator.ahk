@@ -2,30 +2,76 @@
 #SingleInstance Force
 
 ;=============================================================
-; translator - 选中英文按热键即翻译
+; translator - 选中文本按热键即翻译（任意软件可用）
 ; 翻译服务：MyMemory（免费 API，无需注册）/ 百度翻译（免费版，需注册）
-; 托盘菜单可切换提供商、配置百度密钥、更改热键，全部即时生效
-; 项目目录：E:\translator
+; 源语言自动检测（可手动指定），目标语言 30+ 种可选
+; 托盘菜单：切换提供商、配置百度密钥、更改热键、选语言，全部即时生效
 ;=============================================================
 
 ;---------------------- 配置区 ----------------------
 gHotkey      := "^!t"      ; 默认翻译热键：^=Ctrl  !=Alt  t=T
-gTargetLang  := "zh-CN"    ; 目标语言
+gSourceLang  := "auto"     ; 源语言：auto=自动检测，或具体语言 ID
+gTargetLang  := "zh-CN"    ; 目标语言（见下方语言表）
 gApiTimeout  := 15000      ; API 超时毫秒
 gProvider    := "mymemory" ; 翻译提供商：mymemory / baidu
 gBaiduAppid  := ""         ; 百度翻译 APP ID（托盘菜单「配置百度翻译密钥」填入）
 gBaiduSecret := ""         ; 百度翻译密钥
 ;-----------------------------------------------------
 
+;=============================================================
+; 语言表：ID => [显示名, 百度代码]
+; ID 即 MyMemory 的 ISO 639-1 / RFC3066 代码（auto=自动检测）
+;=============================================================
+gLangs := Map(
+    "auto",   ["自动检测", "auto"],
+    "zh-CN",  ["简体中文", "zh"],
+    "zh-TW",  ["繁体中文", "cht"],
+    "en",     ["英语", "en"],
+    "ja",     ["日语", "jp"],
+    "ko",     ["韩语", "kor"],
+    "fr",     ["法语", "fra"],
+    "de",     ["德语", "de"],
+    "es",     ["西班牙语", "spa"],
+    "pt",     ["葡萄牙语", "pt"],
+    "ru",     ["俄语", "ru"],
+    "it",     ["意大利语", "it"],
+    "ar",     ["阿拉伯语", "ara"],
+    "hi",     ["印地语", "hi"],
+    "th",     ["泰语", "th"],
+    "vi",     ["越南语", "vi"],
+    "id",     ["印尼语", "id"],
+    "tr",     ["土耳其语", "tr"],
+    "nl",     ["荷兰语", "nl"],
+    "pl",     ["波兰语", "pl"],
+    "uk",     ["乌克兰语", "uk"],
+    "el",     ["希腊语", "el"],
+    "cs",     ["捷克语", "cs"],
+    "sv",     ["瑞典语", "sv"],
+    "hu",     ["匈牙利语", "hu"],
+    "ro",     ["罗马尼亚语", "ro"],
+    "da",     ["丹麦语", "da"],
+    "fi",     ["芬兰语", "fi"],
+    "no",     ["挪威语", "no"],
+    "ms",     ["马来语", "ms"],
+    "fil",    ["菲律宾语", "fil"],
+    "bn",     ["孟加拉语", "bn"],
+    "ur",     ["乌尔都语", "ur"],
+    "fa",     ["波斯语", "fa"],
+    "he",     ["希伯来语", "iw"]
+)
+
 ; 全局状态
 gCaptureIh     := ""
 gSideBtn       := ""
 gMenuHotkeyLbl := ""
 gMenuProviderLbl := ""
+gSrcMenuLbl    := ""
+gTgtMenuLbl    := ""
+gLastLangMenu  := "src"
 gConfigFile    := A_ScriptDir . "\config.conf"
 hotkeyConf     := A_ScriptDir . "\hotkey.conf"
 
-; 读取持久化配置（provider / 百度密钥 / 热键）
+; 读取持久化配置（provider / 百度密钥 / 热键 / 语言）
 LoadConfig()
 
 ;=============================================================
@@ -41,15 +87,8 @@ if A_Args.Length > 0 and A_Args[1] = "-selftest" {
 
 ; 注册热键 + 托盘菜单 + 启动提示
 Hotkey(gHotkey, TranslateSelected, "On")
-gMenuHotkeyLbl := "当前热键：" . FormatHotkey(gHotkey)
-gMenuProviderLbl := "翻译提供商：" . ProviderName(gProvider)
-A_TrayMenu.Add(gMenuHotkeyLbl, (*) => 0)
-A_TrayMenu.Add(gMenuProviderLbl, ToggleProvider)
-A_TrayMenu.Add("配置百度翻译密钥…", ConfigBaidu)
-A_TrayMenu.Add()
-A_TrayMenu.Add("更改翻译热键…", ChangeHotkey)
-A_TrayMenu.Default := "更改翻译热键…"
-ToolTip("translator 已就绪`n当前热键：" . FormatHotkey(gHotkey) . "`n提供商：" . ProviderName(gProvider), 0, 0)
+UpdateMenuLabels()
+ToolTip("translator 已就绪`n热键：" . FormatHotkey(gHotkey) . "`n" . LangDisplay(gSourceLang) . " → " . LangDisplay(gTargetLang), 0, 0)
 SetTimer(() => ToolTip(), -4000)
 
 ;=============================================================
@@ -61,17 +100,13 @@ TranslateSelected(*) {
     Send("^c")
     if !ClipWait(1.5, 1) {
         A_Clipboard := ClipSaved         ; 恢复剪贴板
-        ShowError("未检测到选中的文本`n`n请先在窗口里选中一段英文再按热键。")
+        ShowError("未检测到选中的文本`n`n请先在窗口里选中文本再按热键。")
         return
     }
     text := Trim(A_Clipboard)
     A_Clipboard := ClipSaved             ; 恢复用户剪贴板
     if text = "" {
         ShowError("选中内容为空。")
-        return
-    }
-    if !RegExMatch(text, "[A-Za-z]") {
-        ShowError("选中内容不含英文字母，无法翻译。")
         return
     }
     translated := TranslateText(text)
@@ -90,15 +125,17 @@ TranslateText(text) {
 }
 
 ;=============================================================
-; MyMemory 免费 API
+; MyMemory 免费 API（源语言 auto 时自动检测）
 ;=============================================================
 TranslateMyMemory(text) {
     global
     ; MyMemory 免费 API 单次请求限 500 字符，长文本按字符分片翻译
     parts := SplitTextByChars(text, 450)
     result := ""
+    ; 源语言：auto 时用 Autodetect（MyMemory 有效写法），否则用语言 ID
+    srcCode := gSourceLang = "auto" ? "Autodetect" : gSourceLang
     for part in parts {
-        url := "https://api.mymemory.translated.net/get?q=" . UrlEncode(part) . "&langpair=en|" . gTargetLang
+        url := "https://api.mymemory.translated.net/get?q=" . UrlEncode(part) . "&langpair=" . UrlEncode(srcCode . "|" . gTargetLang)
         try {
             http := ComObject("WinHttp.WinHttpRequest.5.1")
             http.Open("GET", url, false)
@@ -129,8 +166,56 @@ TranslateMyMemory(text) {
 }
 
 ;=============================================================
+; 百度翻译开放平台（免费标准版，需注册 https://fanyi-api.baidu.com）
+; 源语言 auto 时 from=auto（百度原生支持自动检测）
+;=============================================================
+TranslateBaidu(text) {
+    global
+    ; 百度标准版单次 q 限 6000 字节，长文本分片翻译
+    parts := SplitTextByBytes(text, 5000)
+    result := ""
+    fromCode := BaiduLang(gSourceLang)   ; auto → "auto"
+    toCode := BaiduLang(gTargetLang)
+    for part in parts {
+        salt := Random(100000, 999999)
+        sign := Md5Hex(gBaiduAppid . part . salt . gBaiduSecret)
+        url := "https://fanyi-api.baidu.com/api/trans/vip/translate?q=" . UrlEncode(part)
+            . "&from=" . fromCode . "&to=" . toCode . "&appid=" . gBaiduAppid . "&salt=" . salt . "&sign=" . sign
+        try {
+            http := ComObject("WinHttp.WinHttpRequest.5.1")
+            http.Open("GET", url, false)
+            http.SetTimeouts(gApiTimeout, gApiTimeout, gApiTimeout, gApiTimeout)
+            http.Send()
+            body := http.ResponseText
+            dq := Chr(34)
+            ; 百度对多行 q 返回多个 trans_result，循环提取所有 dst
+            outPart := ""
+            mStart := 1
+            gotDst := false
+            while RegExMatch(body, dq . "dst" . dq . ":" . dq . "(.*?)" . dq, &m, mStart) {
+                outPart .= DecodeUnicode(m[1]) . "`n"
+                gotDst := true
+                mStart := m.Pos + m.Len
+            }
+            if gotDst {
+                result .= RTrim(outPart, "`n")
+            } else {
+                if RegExMatch(body, dq . "error_code" . dq . ":" . dq . "(.*?)" . dq, &e) and RegExMatch(body, dq . "error_msg" . dq . ":" . dq . "(.*?)" . dq, &em)
+                    ShowError("百度翻译错误 " . e[1] . "：" . DecodeUnicode(em[1]) . "`n`n如为 52003/54001，请检查 APP ID 和密钥是否正确；`n如为 54003，请确认已开通该翻译服务。")
+                else
+                    ShowError("百度翻译失败：无法解析响应。")
+                return ""
+            }
+        } catch as err {
+            ShowError("网络请求失败：" . err.Message)
+            return ""
+        }
+    }
+    return result
+}
+
+;=============================================================
 ; 按字符数分割长文本（MyMemory 免费 API 单次限 500 字符）
-; 优先在换行处切分，保持行完整
 ;=============================================================
 SplitTextByChars(text, maxChars) {
     parts := []
@@ -171,58 +256,6 @@ SplitTextByChars(text, maxChars) {
 }
 
 ;=============================================================
-; 按字符数分割长文本（MyMemory 免费 API 单次限 500 字符）
-; 优先在换行处切分，保持行完整
-;=============================================================
-
-
-;=============================================================
-; 百度翻译开放平台（免费标准版，需注册 https://fanyi-api.baidu.com）
-;=============================================================
-TranslateBaidu(text) {
-    global
-    ; 百度标准版单次 q 限 6000 字节，长文本分片翻译
-    parts := SplitTextByBytes(text, 5000)
-    result := ""
-    for part in parts {
-        salt := Random(100000, 999999)
-        sign := Md5Hex(gBaiduAppid . part . salt . gBaiduSecret)
-        url := "https://fanyi-api.baidu.com/api/trans/vip/translate?q=" . UrlEncode(part)
-            . "&from=en&to=zh&appid=" . gBaiduAppid . "&salt=" . salt . "&sign=" . sign
-        try {
-            http := ComObject("WinHttp.WinHttpRequest.5.1")
-            http.Open("GET", url, false)
-            http.SetTimeouts(gApiTimeout, gApiTimeout, gApiTimeout, gApiTimeout)
-            http.Send()
-            body := http.ResponseText
-            dq := Chr(34)
-            ; 百度对多行 q 返回多个 trans_result，循环提取所有 dst
-            outPart := ""
-            mStart := 1
-            gotDst := false
-            while RegExMatch(body, dq . "dst" . dq . ":" . dq . "(.*?)" . dq, &m, mStart) {
-                outPart .= DecodeUnicode(m[1]) . "`n"
-                gotDst := true
-                mStart := m.Pos + m.Len
-            }
-            if gotDst {
-                result .= RTrim(outPart, "`n")
-            } else {
-                if RegExMatch(body, dq . "error_code" . dq . ":" . dq . "(.*?)" . dq, &e) and RegExMatch(body, dq . "error_msg" . dq . ":" . dq . "(.*?)" . dq, &em)
-                    ShowError("百度翻译错误 " . e[1] . "：" . DecodeUnicode(em[1]) . "`n`n如为 52003/54001，请检查 APP ID 和密钥是否正确；`n如为 54003，请确认已开通该翻译服务。")
-                else
-                    ShowError("百度翻译失败：无法解析响应。")
-                return ""
-            }
-        } catch as err {
-            ShowError("网络请求失败：" . err.Message)
-            return ""
-        }
-    }
-    return result
-}
-
-;=============================================================
 ; 按 UTF-8 字节数分割长文本（百度 API 单次 q 限 6000 字节）
 ;=============================================================
 SplitTextByBytes(text, maxBytes) {
@@ -233,7 +266,6 @@ SplitTextByBytes(text, maxBytes) {
     for line in lines {
         lineBytes := StrPut(line, "UTF-8") - 1
         if lineBytes > maxBytes {
-            ; 单行超长：先落盘当前片，该行再按字节切
             if current != "" {
                 parts.Push(current)
                 current := ""
@@ -273,6 +305,82 @@ SplitTextByBytes(text, maxBytes) {
     if current != ""
         parts.Push(current)
     return parts
+}
+
+;=============================================================
+; 语言工具：显示名 / 百度代码 / 菜单构建
+;=============================================================
+LangDisplay(id) {
+    global
+    if gLangs.Has(id)
+        return gLangs[id][1]
+    return id
+}
+BaiduLang(id) {
+    global
+    if gLangs.Has(id)
+        return gLangs[id][2]
+    return id
+}
+; 构建语言选择子菜单（type: "src" 含自动检测 / "tgt" 不含）
+BuildLangMenu(type) {
+    global
+    langMenu := Menu()
+    for id, info in gLangs {
+        if type = "tgt" and id = "auto"
+            continue
+        langMenu.Add(info[1], MakeLangHandler(id))
+    }
+    current := type = "src" ? gSourceLang : gTargetLang
+    langMenu.Check(LangDisplay(current))
+    return langMenu
+}
+; 闭包捕获修正：通过函数参数传值，避免循环变量共享
+MakeLangHandler(id) {
+    if id = "auto"
+        return (*) => SetSourceLang("auto")
+    return (*) => SetLangFromMenu(id)
+}
+; 语言菜单点击分发（源/目标共用，由打开的子菜单决定）
+SetLangFromMenu(id) {
+    global
+    if gLastLangMenu = "src"
+        SetSourceLang(id)
+    else
+        SetTargetLang(id)
+}
+SetSourceLang(id) {
+    global
+    gSourceLang := id
+    SaveConfig()
+    UpdateMenuLabels()
+    ToolTip("源语言已设为：" . LangDisplay(id), 0, 0)
+    SetTimer(() => ToolTip(), -2000)
+}
+SetTargetLang(id) {
+    global
+    gTargetLang := id
+    SaveConfig()
+    UpdateMenuLabels()
+    ToolTip("目标语言已设为：" . LangDisplay(id), 0, 0)
+    SetTimer(() => ToolTip(), -2000)
+}
+; 菜单标题统一更新（勾选跟着重建）
+UpdateMenuLabels() {
+    global
+    gMenuHotkeyLbl := "当前热键：" . FormatHotkey(gHotkey)
+    gMenuProviderLbl := "翻译提供商：" . ProviderName(gProvider)
+    gSrcMenuLbl := "源语言：" . LangDisplay(gSourceLang)
+    gTgtMenuLbl := "目标语言：" . LangDisplay(gTargetLang)
+    A_TrayMenu.Delete("")
+    A_TrayMenu.Add(gMenuHotkeyLbl, (*) => 0)
+    A_TrayMenu.Add(gMenuProviderLbl, ToggleProvider)
+    A_TrayMenu.Add("配置百度翻译密钥…", ConfigBaidu)
+    A_TrayMenu.Add(gSrcMenuLbl, BuildLangMenu("src"))
+    A_TrayMenu.Add(gTgtMenuLbl, BuildLangMenu("tgt"))
+    A_TrayMenu.Add()
+    A_TrayMenu.Add("更改翻译热键…", ChangeHotkey)
+    A_TrayMenu.Default := "更改翻译热键…"
 }
 
 ;=============================================================
@@ -399,10 +507,10 @@ ShowResult(src, dst) {
     gResultGui := g
     g.MarginX := 12, g.MarginY := 10
     g.SetFont("s10", "Microsoft YaHei UI")
-    g.Add("Text", "w520", "原文：")
+    g.Add("Text", "w520", "原文（" . LangDisplay(gSourceLang) . "）：")
     srcBox := g.Add("Edit", "w520 h110 ReadOnly +Wrap", src)
     srcBox.SetFont("s9", "Consolas")
-    g.Add("Text", "w520", "译文：")
+    g.Add("Text", "w520", "译文（" . LangDisplay(gTargetLang) . "）：")
     dstBox := g.Add("Edit", "w520 h130 ReadOnly +Wrap", dst)
     dstBox.SetFont("s10", "Microsoft YaHei UI")
     g.Add("Button", "w90 h30 xm+330", "复制译文").OnEvent("Click", (*) => A_Clipboard := dst)
@@ -466,8 +574,7 @@ ChangeHotkey(*) {
     }
     gHotkey := newKey
     SaveConfig()
-    A_TrayMenu.Rename(gMenuHotkeyLbl, "当前热键：" . FormatHotkey(gHotkey))
-    gMenuHotkeyLbl := "当前热键：" . FormatHotkey(gHotkey)
+    UpdateMenuLabels()
     ToolTip("翻译热键已更改为：" . FormatHotkey(gHotkey), 0, 0)
     SetTimer(() => ToolTip(), -3000)
 }
@@ -487,7 +594,7 @@ ToggleProvider(*) {
         gProvider := "baidu"
     }
     SaveConfig()
-    UpdateProviderMenu()
+    UpdateMenuLabels()
     ToolTip("翻译提供商已切换为：" . ProviderName(gProvider), 0, 0)
     SetTimer(() => ToolTip(), -3000)
 }
@@ -517,31 +624,27 @@ ConfigBaidu(*) {
     gBaiduSecret := secret
     gProvider := "baidu"
     SaveConfig()
-    UpdateProviderMenu()
+    UpdateMenuLabels()
     ToolTip("百度翻译已配置并启用（提供商：百度翻译）", 0, 0)
     SetTimer(() => ToolTip(), -3000)
 }
 
 ;=============================================================
-; 提供商名称 + 托盘菜单更新
+; 提供商名称
 ;=============================================================
 ProviderName(p) {
     if p = "baidu"
         return "百度翻译"
     return "MyMemory"
 }
-UpdateProviderMenu() {
-    global
-    A_TrayMenu.Rename(gMenuProviderLbl, "翻译提供商：" . ProviderName(gProvider))
-    gMenuProviderLbl := "翻译提供商：" . ProviderName(gProvider)
-}
 
 ;=============================================================
-; 配置读写（config.conf：hotkey / provider / baidu_appid / baidu_secret）
+; 配置读写（config.conf：hotkey / provider / src_lang / tgt_lang / baidu_*）
 ;=============================================================
 SaveConfig() {
     global
     content := "hotkey=" . gHotkey . "`nprovider=" . gProvider
+        . "`nsrc_lang=" . gSourceLang . "`ntgt_lang=" . gTargetLang
         . "`nbaidu_appid=" . gBaiduAppid . "`nbaidu_secret=" . gBaiduSecret . "`n"
     FileOpen(gConfigFile, "w", "UTF-8").Write(content)
 }
@@ -565,6 +668,10 @@ LoadConfig() {
                 }
             } else if key = "provider" and (val = "baidu" or val = "mymemory") {
                 gProvider := val
+            } else if key = "src_lang" and gLangs.Has(val) {
+                gSourceLang := val
+            } else if key = "tgt_lang" and gLangs.Has(val) and val != "auto" {
+                gTargetLang := val
             } else if key = "baidu_appid" {
                 gBaiduAppid := val
             } else if key = "baidu_secret" {
