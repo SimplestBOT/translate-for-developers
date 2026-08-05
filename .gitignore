@@ -1,0 +1,4 @@
+# 配置文件含百度密钥，禁止提交
+config.conf
+hotkey.conf
+*.lnk
