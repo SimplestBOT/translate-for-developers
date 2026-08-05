@@ -2,3 +2,5 @@
 config.conf
 hotkey.conf
 *.lnk
+# 编译产物（放 Release 附件，不提交仓库）
+translator.exe
