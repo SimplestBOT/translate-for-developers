@@ -68,6 +68,7 @@ gMenuProviderLbl := ""
 gSrcMenuLbl    := ""
 gTgtMenuLbl    := ""
 gLastLangMenu  := "src"
+gTrayTitles    := []
 gConfigFile    := A_ScriptDir . "\config.conf"
 hotkeyConf     := A_ScriptDir . "\hotkey.conf"
 
@@ -372,15 +373,24 @@ UpdateMenuLabels() {
     gMenuProviderLbl := "翻译提供商：" . ProviderName(gProvider)
     gSrcMenuLbl := "源语言：" . LangDisplay(gSourceLang)
     gTgtMenuLbl := "目标语言：" . LangDisplay(gTargetLang)
-    A_TrayMenu.Delete("")
-    A_TrayMenu.Add(gMenuHotkeyLbl, (*) => 0)
-    A_TrayMenu.Add(gMenuProviderLbl, ToggleProvider)
-    A_TrayMenu.Add("配置百度翻译密钥…", ConfigBaidu)
-    A_TrayMenu.Add(gSrcMenuLbl, BuildLangMenu("src"))
-    A_TrayMenu.Add(gTgtMenuLbl, BuildLangMenu("tgt"))
-    A_TrayMenu.Add()
-    A_TrayMenu.Add("更改翻译热键…", ChangeHotkey)
+    ; 逐个删除旧菜单项（AHK v2 的 Delete 需指定名称）
+    for t in gTrayTitles
+        A_TrayMenu.Delete(t)
+    gTrayTitles := []
+    ; 重建菜单（不添加分隔线，避免残留）
+    AddTrayItem(gMenuHotkeyLbl, (*) => 0)
+    AddTrayItem(gMenuProviderLbl, ToggleProvider)
+    AddTrayItem("配置百度翻译密钥…", ConfigBaidu)
+    AddTrayItem(gSrcMenuLbl, BuildLangMenu("src"))
+    AddTrayItem(gTgtMenuLbl, BuildLangMenu("tgt"))
+    AddTrayItem("更改翻译热键…", ChangeHotkey)
     A_TrayMenu.Default := "更改翻译热键…"
+}
+; 记录菜单项标题，便于整体重建
+AddTrayItem(title, callback) {
+    global
+    A_TrayMenu.Add(title, callback)
+    gTrayTitles.Push(title)
 }
 
 ;=============================================================
