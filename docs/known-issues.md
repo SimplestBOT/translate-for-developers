@@ -111,3 +111,17 @@
   （wrapH=540+rendered 锚点）通过。
 - **部署注记**：纯 webui 资产修复，无 C# 改动；宿主每次开窗现读 dist HTML，常驻实例
   无需重启即生效（重开设置窗即可）。
+
+## 收官后二修（2026-09-02，用户报原文中文字体与译文不一致）
+
+- **现象**：结果窗原文里的中文发虚、和译文明显不是一个字体；用户问是否字号原因。
+- **根因**（CDP `CSS.getPlatformFontsForNode` 取证实锤）：原文 `.srcbox` 用纯西文等宽栈
+  `--mono`（Cascadia Code→…→monospace，无一含汉字字形），中文落到系统 monospace
+  兜底=**NSimSun（新宋体）**；译文 `.dstbox` 走 `--sans` 落 **Microsoft YaHei UI**。
+  是字体家族不同，不是字号（字号也不同：12.5px vs 14px，但字形差异主因是家族）。
+- **修复**：result.css 新增 `--monocjk`（等宽栈尾、generic monospace 前插
+  'Microsoft YaHei UI'），`.srcbox` 改用。逐字符回退特性保证英文仍 Cascadia Code
+  （等宽不丢），中日文字与译文同款雅黑，韩文照旧 Malgun Gothic。
+- **验证**：before=srcbox [NSimSun×22, Cascadia Code×38, Malgun Gothic×5]，
+  after=[Cascadia Code×38, Microsoft YaHei UI×22, Malgun Gothic×5]；dstbox 不变
+  [Segoe UI Variable×40, Microsoft YaHei UI×22, Malgun Gothic×5]。截图复核。
