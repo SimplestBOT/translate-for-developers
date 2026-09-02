@@ -14,10 +14,9 @@ import DstCard from './components/DstCard'
 import ErrorCard from './components/ErrorCard'
 import SettingsPopover from './components/SettingsPopover'
 
-/** result 页 init 载荷（protocol.md §3；testError 为 4a 起调试字段）。
+/** result 页 init 载荷（protocol.md §3）。
  *  5d 起宿主自开窗追发设置字段（hotkey/langs/src/tgt/hasKeys）——主窗口
- *  设置 Popover 用；AHK 推的 init 缺省这些字段，SettingsPopover 据此
- *  降级不挂载，AHK 双轨行为不变。 */
+ *  设置 Popover 用；无这些字段时 SettingsPopover 降级不挂载。 */
 export interface ResultInit {
   srcText: string
   srcLangLabel: string
@@ -25,8 +24,7 @@ export interface ResultInit {
   provider: string
   providerKey: string
   ndrag: boolean
-  testError?: boolean
-  // ---- 5d 设置集中化扩展字段（AHK 双轨 init 无）----
+  // ---- 5d 设置集中化扩展字段 ----
   hotkey?: string
   hotkeyKeys?: string[]
   langs?: LangInfo[]
