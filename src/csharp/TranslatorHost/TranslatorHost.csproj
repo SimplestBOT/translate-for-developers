@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>translator-ui</AssemblyName>
+    <RootNamespace>TranslatorHost</RootNamespace>
+    <Version>1.2.0</Version>
+    <Product>translate-for-developers</Product>
+    <AssemblyTitle>translator UI Host (C# WebView2 宿主)</AssemblyTitle>
+    <LangVersion>7.3</LangVersion>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
+    <!-- 无需 VS/Developer Pack 即可编 net48 -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <Reference Include="System.Web.Extensions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 阶段 3：业务核心类库（翻译/Provider/配置/剪贴板） -->
+    <ProjectReference Include="..\TranslatorCore\TranslatorCore.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,137 @@
+/* result.css - 与 scripts/html/result.html 的样式逐条一致（4b 视觉对齐） */
+:root{--bg:#0a0d13;--card:rgba(255,255,255,.032);--card2:rgba(255,255,255,.05);
+--line:rgba(255,255,255,.085);--line2:rgba(255,255,255,.16);
+--text:#e9edf5;--muted:#9aa4ba;--faint:#5f6a80;
+--acc:#e8b04b;--acc2:#ffd58a;--accdim:rgba(232,176,75,.14);--ok:#5fd99b;--err:#ff8078;
+--mono:'Cascadia Code','Cascadia Mono','JetBrains Mono',Consolas,'Courier New',monospace;
+--sans:'Segoe UI Variable Text','Segoe UI','Microsoft YaHei UI',sans-serif;
+--ease:cubic-bezier(.22,1,.36,1);--spring:cubic-bezier(.34,1.56,.64,1)}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+/* React 挂载点：没有它 .wrap 的 height:100% 相对 auto 父级无效 → 整页塌陷成
+   内容高度，长译文把 footer/译文尾部顶出窗口被裁（2026-09-02 用户报）；
+   legacy 页无 #root 中间层所以不踩此坑 */
+#root{height:100%}
+body{font:13.5px/1.6 var(--sans);color:var(--text);background:var(--bg);overflow:hidden;user-select:none;cursor:default;
+background-image:radial-gradient(460px 220px at 10% -10%,rgba(232,176,75,.10),transparent 62%),
+radial-gradient(560px 300px at 108% 112%,rgba(64,105,140,.12),transparent 62%)}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;opacity:.05;
+background-image:url('data:image/svg+xml,%3Csvg%20xmlns=%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width=%22140%22%20height=%22140%22%3E%3Cfilter%20id=%22n%22%3E%3CfeTurbulence%20type=%22fractalNoise%22%20baseFrequency=%220.9%22%20numOctaves=%222%22%2F%3E%3C%2Ffilter%3E%3Crect%20width=%22140%22%20height=%22140%22%20filter=%22url(%23n)%22%2F%3E%3C%2Fsvg%3E')}
+::selection{background:rgba(232,176,75,.30)}
+::-webkit-scrollbar{width:9px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);border-radius:5px;border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.25);background-clip:content-box}
+::-webkit-scrollbar-track{background:transparent}
+.wrap{display:flex;flex-direction:column;height:100%;padding:0 14px 12px}
+.rv{opacity:0;animation:rise .55s var(--ease) forwards;animation-delay:var(--d,0ms)}
+@keyframes rise{from{opacity:0;transform:translateY(8px);filter:blur(3px)}to{opacity:1;transform:none;filter:none}}
+header{display:flex;align-items:center;gap:9px;height:46px;flex:none;-webkit-app-region:drag}
+header button{-webkit-app-region:no-drag}
+.logo{width:25px;height:25px;border-radius:8px;background:linear-gradient(135deg,#f6c76b,#d9962f);display:grid;place-items:center;font-size:13px;font-weight:700;color:#241a06;box-shadow:0 2px 14px rgba(232,176,75,.35)}
+.brand{font-family:var(--mono);font-size:12px;color:var(--faint);letter-spacing:.5px}
+.pair{margin-left:auto;display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px}
+.chip{padding:2px 9px;border:1px solid var(--line);border-radius:7px;color:var(--muted);background:var(--card);white-space:nowrap}
+.chip.acc{color:#241a06;background:linear-gradient(135deg,#f6c76b,#dfa445);border-color:transparent;font-weight:600}
+.pair .arr{color:var(--faint)}
+.xbtn{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--faint);border:0;background:none;cursor:pointer;font-size:14px;line-height:1;transition:all .18s}
+.xbtn:hover{background:rgba(255,110,100,.13);color:var(--err)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:10px 13px;position:relative}
+.flabel{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--mono);font-size:10.5px;letter-spacing:1.8px;color:var(--faint)}
+.flabel b{color:var(--acc);font-weight:600;letter-spacing:.5px}
+.txt{user-select:text;cursor:text;white-space:pre-wrap;word-break:break-word}
+button{font:inherit}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 15px;border-radius:9px;font-size:12.5px;cursor:pointer;border:1px solid var(--line);color:var(--muted);background:var(--card);transition:transform .16s var(--ease),box-shadow .16s,background .16s,color .16s,border-color .16s}
+.btn:hover{transform:translateY(-1px);color:var(--text);border-color:var(--line2);background:var(--card2)}
+.btn:active{transform:translateY(0) scale(.97)}
+.btn:disabled{opacity:.38;pointer-events:none}
+.btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.btn.pri{background:linear-gradient(135deg,#f6c76b,#dfa445);color:#241a06;font-weight:600;border-color:transparent;box-shadow:0 2px 14px rgba(232,176,75,.28)}
+.btn.pri:hover{box-shadow:0 4px 20px rgba(232,176,75,.42)}
+.btn.done{background:linear-gradient(135deg,#5fd99b,#38b279);color:#052314;border-color:transparent}
+.srcbox{font:12.5px/1.6 var(--mono);color:#c6cfe0;margin-top:7px;max-height:140px;overflow:auto}
+.dstbox{font-size:14px;line-height:1.8;color:var(--text);margin-top:7px;flex:1;min-height:84px;overflow:auto}
+.dstbox.set{animation:unblur .5s var(--ease)}
+@keyframes unblur{from{opacity:0;filter:blur(5px);transform:translateY(4px)}to{opacity:1;filter:none;transform:none}}
+.rail{display:flex;align-items:center;gap:10px;margin:9px 2px;height:18px;flex:none}
+.track{flex:1;height:2px;border-radius:2px;background:var(--line);position:relative;overflow:hidden}
+.beam{position:absolute;top:0;bottom:0;width:36%;border-radius:2px;background:linear-gradient(90deg,transparent,var(--acc),transparent);opacity:0;transition:opacity .35s;animation:sweep 1.15s ease-in-out infinite}
+.loading .beam{opacity:1}
+@keyframes sweep{from{transform:translateX(-130%)}to{transform:translateX(360%)}}
+#rlab{font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:.5px;min-width:96px;text-align:right}
+.sk{height:12px;border-radius:6px;margin-top:9px;background:linear-gradient(90deg,rgba(255,255,255,.05) 30%,rgba(255,255,255,.12) 50%,rgba(255,255,255,.05) 70%);background-size:220% 100%;animation:shimmer 1.25s linear infinite}
+.sk.w90{width:90%}.sk.w72{width:72%}.sk.w54{width:54%}
+@keyframes shimmer{from{background-position:130% 0}to{background-position:-130% 0}}
+footer{display:flex;align-items:center;gap:9px;margin-top:auto;padding-top:9px;flex:none}
+.prov{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:.3px}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--acc);box-shadow:0 0 9px rgba(232,176,75,.7)}
+.dot.b{background:#66b8ff;box-shadow:0 0 9px rgba(102,184,255,.7)}
+.hint{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+.dstcard{flex:1;min-height:0;display:flex;flex-direction:column}
+.errcard{flex:1;display:flex;gap:13px;align-items:flex-start;background:rgba(255,128,120,.055);border:1px solid rgba(255,128,120,.24);border-radius:13px;padding:15px 16px;margin-top:9px}
+.eico{width:30px;height:30px;flex:none;border-radius:9px;background:rgba(255,128,120,.14);color:var(--err);display:grid;place-items:center;font-weight:800;font-size:16px}
+.etitle{font-weight:600;color:#ffb3ac;margin-bottom:3px}
+.emsg{color:var(--muted);font-size:12.5px;line-height:1.65;user-select:text;white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:auto}
+.erow{display:flex;gap:8px;margin-top:12px}
+/* ---- 5d 主窗口设置 Popover（复用 settings.css 组件样式；齿轮/面板为新增） ---- */
+.pair.act{cursor:pointer}
+.spov-root{position:relative;flex:none}
+.xbtn.gear{font-size:13px}
+.xbtn.gear.on,.xbtn.gear:hover{background:var(--accdim);color:var(--acc)}
+@keyframes spin1{to{transform:rotate(90deg)}}
+.xbtn.gear.on{transform:rotate(90deg)}
+/* .spov portal 到 body：fixed 定位脱离 header 层叠上下文（transform 陷阱） */
+.spov{position:fixed;top:52px;right:18px;width:300px;z-index:40;background:#121724;border:1px solid var(--line2);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.6);padding:12px 13px;animation:ddin .18s var(--ease)}
+@keyframes ddin{from{opacity:0;transform:translateY(-6px) scale(.98)}}
+.spov-gap{margin-top:12px}
+.spov .flabel{margin-bottom:2px}
+.spov .lrow{margin-top:8px}
+.spov .provrow{margin-top:8px}
+.spov-hint{margin-top:9px;font-size:11.5px;color:var(--err);line-height:1.5}
+.spov .capnote{margin-top:8px}
+.spov .acts{margin-top:9px}
+/* LangSelect（settings.css 平移） */
+.lrow{display:flex;align-items:center;gap:10px}
+.lname{flex:none;width:58px;font-family:var(--mono);font-size:10.5px;letter-spacing:1px;color:var(--faint)}
+.lsel{position:relative;flex:1}
+.sel{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);font-size:12.5px;cursor:pointer;transition:border-color .2s,background .2s}
+.sel:hover{border-color:var(--line2);background:rgba(255,255,255,.06)}
+.sel .caret{color:var(--faint);font-size:10px}
+.dd{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:50;background:#131826;border:1px solid var(--line2);border-radius:11px;box-shadow:0 14px 40px rgba(0,0,0,.55);overflow:hidden;animation:dd .18s var(--ease)}
+@keyframes dd{from{opacity:0;transform:translateY(-5px)}}
+.ddsearch{padding:8px;border-bottom:1px solid var(--line)}
+.ddsearch input{width:100%;margin-top:0;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:7px;padding:6px 9px;color:var(--text);font:12px var(--mono);outline:none;user-select:text}
+.ddsearch input:focus{border-color:rgba(232,176,75,.5)}
+.ddlist{max-height:180px;overflow-y:auto;padding:4px}
+.ddgroup{padding:5px 9px 2px;font-family:var(--mono);font-size:9.5px;letter-spacing:1.5px;color:var(--faint)}
+.dditem{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 9px;border-radius:7px;cursor:pointer;font-size:12.5px;color:var(--text)}
+.dditem:hover{background:rgba(232,176,75,.10)}
+.dditem .code{font-family:var(--mono);font-size:10px;color:var(--faint)}
+.dditem.on{color:var(--acc2)}
+.dditem.on::after{content:'✓';color:var(--acc);font-size:11px}
+.ddempty{padding:12px;text-align:center;font-size:11.5px;color:var(--faint)}
+/* ProviderPicker（settings.css 平移） */
+.provrow{display:flex;flex-direction:column;gap:7px}
+.pcard{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:9px 11px;border-radius:11px;border:1px solid var(--line);background:var(--card);cursor:pointer;transition:border-color .18s,background .18s,transform .18s var(--ease);font:inherit}
+.pcard:hover{border-color:var(--line2);transform:translateY(-1px)}
+.pcard.on{border-color:rgba(232,176,75,.55);background:rgba(232,176,75,.06)}
+.pmark{flex:none;width:16px;height:16px;border-radius:50%;border:1px solid var(--line2);display:grid;place-items:center}
+.pcard.on .pmark{border-color:var(--acc)}
+.pcard.on .pmark::after{content:'';width:8px;height:8px;border-radius:50%;background:var(--acc);box-shadow:0 0 8px rgba(232,176,75,.6)}
+.pbody{flex:1;min-width:0}
+.pbody b{font-size:12.5px;font-weight:600;color:var(--text)}
+.pbody i{display:block;font-style:normal;font-size:10.5px;color:var(--faint);margin-top:1px}
+.ptag{flex:none;font-family:var(--mono);font-size:9.5px;letter-spacing:1px;padding:2px 7px;border-radius:6px;border:1px solid var(--accdim);color:var(--acc2);background:var(--accdim)}
+.ptag.hide{display:none}
+/* HotkeyCard（settings.css 平移） */
+.hkrow{display:flex;align-items:center;gap:10px;margin-top:8px;min-height:40px}
+.kcaps{display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:1}
+.kcap{display:inline-flex;align-items:center;min-width:32px;height:32px;padding:0 11px;border-radius:8px;font:600 12.5px var(--mono);color:var(--text);background:linear-gradient(180deg,#273044,#171d2b);border:1px solid var(--line2);box-shadow:0 3px 0 rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.09);animation:pop .45s var(--spring) backwards;animation-delay:var(--d,0ms)}
+.kcap.plus{box-shadow:none;border:0;background:none;color:var(--faint);min-width:0;padding:0 1px;font-weight:400}
+@keyframes pop{from{opacity:0;transform:scale(.55) translateY(9px)}}
+.bigbox{min-height:66px;margin-top:8px;border:1px dashed var(--line2);border-radius:12px;background:rgba(255,255,255,.02);display:flex;align-items:center;justify-content:center;gap:9px;flex-wrap:wrap;padding:10px;animation:breath 2.2s ease-in-out infinite}
+@keyframes breath{0%,100%{box-shadow:0 0 0 rgba(232,176,75,0)}50%{box-shadow:0 0 26px rgba(232,176,75,.13)}}
+.pdot{width:9px;height:9px;border-radius:50%;background:var(--acc);animation:pd 1.05s ease-in-out infinite}
+@keyframes pd{0%,100%{opacity:.18;transform:scale(.75)}50%{opacity:1;transform:scale(1.12)}}
+.acts{display:flex;justify-content:center;gap:9px}
+.capnote{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+.capnote b{color:var(--acc2);font-weight:600}

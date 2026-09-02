@@ -1,0 +1,53 @@
+/* capture.css - 与 scripts/html/capture.html 的样式逐条一致（4c 视觉对齐） */
+:root{--bg:#0a0d13;--card:rgba(255,255,255,.032);--card2:rgba(255,255,255,.05);
+--line:rgba(255,255,255,.085);--line2:rgba(255,255,255,.16);
+--text:#e9edf5;--muted:#9aa4ba;--faint:#5f6a80;
+--acc:#e8b04b;--acc2:#ffd58a;--accdim:rgba(232,176,75,.14);--ok:#5fd99b;--err:#ff8078;
+--mono:'Cascadia Code','Cascadia Mono','JetBrains Mono',Consolas,'Courier New',monospace;
+--sans:'Segoe UI Variable Text','Segoe UI','Microsoft YaHei UI',sans-serif;
+--ease:cubic-bezier(.22,1,.36,1);--spring:cubic-bezier(.34,1.56,.64,1)}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+#root{height:100%}
+body{font:13.5px/1.6 var(--sans);color:var(--text);background:var(--bg);overflow:hidden;user-select:none;cursor:default;
+background-image:radial-gradient(460px 220px at 10% -10%,rgba(232,176,75,.10),transparent 62%),
+radial-gradient(560px 300px at 108% 112%,rgba(64,105,140,.12),transparent 62%)}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;opacity:.05;
+background-image:url('data:image/svg+xml,%3Csvg%20xmlns=%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width=%22140%22%20height=%22140%22%3E%3Cfilter%20id=%22n%22%3E%3CfeTurbulence%20type=%22fractalNoise%22%20baseFrequency=%220.9%22%20numOctaves=%222%22%2F%3E%3C%2Ffilter%3E%3Crect%20width=%22140%22%20height=%22140%22%20filter=%22url(%23n)%22%2F%3E%3C%2Fsvg%3E')}
+::selection{background:rgba(232,176,75,.30)}
+::-webkit-scrollbar{width:9px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);border-radius:5px;border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.25);background-clip:content-box}
+::-webkit-scrollbar-track{background:transparent}
+.wrap{display:flex;flex-direction:column;height:100%;padding:0 14px 12px}
+.rv{opacity:0;animation:rise .55s var(--ease) forwards;animation-delay:var(--d,0ms)}
+@keyframes rise{from{opacity:0;transform:translateY(8px);filter:blur(3px)}to{opacity:1;transform:none;filter:none}}
+header{display:flex;align-items:center;gap:9px;height:46px;flex:none;-webkit-app-region:drag}
+header button{-webkit-app-region:no-drag}
+.logo{width:25px;height:25px;border-radius:8px;background:linear-gradient(135deg,#f6c76b,#d9962f);display:grid;place-items:center;font-size:13px;font-weight:700;color:#241a06;box-shadow:0 2px 14px rgba(232,176,75,.35)}
+.brand{font-family:var(--mono);font-size:12px;color:var(--faint);letter-spacing:.5px}
+.pair{margin-left:auto;display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px}
+.chip{padding:2px 9px;border:1px solid var(--line);border-radius:7px;color:var(--muted);background:var(--card);white-space:nowrap}
+.xbtn{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--faint);border:0;background:none;cursor:pointer;font-size:14px;line-height:1;transition:all .18s}
+.xbtn:hover{background:rgba(255,110,100,.13);color:var(--err)}
+button{font:inherit}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 15px;border-radius:9px;font-size:12.5px;cursor:pointer;border:1px solid var(--line);color:var(--muted);background:var(--card);transition:transform .16s var(--ease),box-shadow .16s,background .16s,color .16s,border-color .16s}
+.btn:hover{transform:translateY(-1px);color:var(--text);border-color:var(--line2);background:var(--card2)}
+.btn:active{transform:translateY(0) scale(.97)}
+.btn.pri{background:linear-gradient(135deg,#f6c76b,#dfa445);color:#241a06;font-weight:600;border-color:transparent;box-shadow:0 2px 14px rgba(232,176,75,.28)}
+.btn.pri:hover{box-shadow:0 4px 20px rgba(232,176,75,.42)}
+.hero{text-align:center;margin-top:4px}
+/* .box 常驻呼吸 + 首次 rise 入场合并（legacy #box 同款，避免覆盖 .rv 动画） */
+.box{animation:rise .55s var(--ease) 80ms forwards, breath 2.2s ease-in-out .9s infinite}
+.bigbox{min-height:96px;margin-top:14px;border:1px dashed var(--line2);border-radius:14px;background:rgba(255,255,255,.02);display:flex;align-items:center;justify-content:center;gap:9px;flex-wrap:wrap;padding:12px;opacity:0}
+.bigbox.pulse{border-color:rgba(232,176,75,.30)}
+@keyframes breath{0%,100%{box-shadow:0 0 0 rgba(232,176,75,0)}50%{box-shadow:0 0 26px rgba(232,176,75,.13)}}
+.pdot{width:9px;height:9px;border-radius:50%;background:var(--acc);animation:pd 1.05s ease-in-out infinite}
+@keyframes pd{0%,100%{opacity:.18;transform:scale(.75)}50%{opacity:1;transform:scale(1.12)}}
+.kcap{display:inline-flex;align-items:center;min-width:36px;height:40px;padding:0 13px;border-radius:10px;font:600 14.5px var(--mono);color:var(--text);background:linear-gradient(180deg,#273044,#171d2b);border:1px solid var(--line2);box-shadow:0 3px 0 rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.09);animation:pop .45s var(--spring) backwards;animation-delay:var(--d,0ms)}
+.kcap.plus{box-shadow:none;border:0;background:none;color:var(--faint);min-width:0;padding:0 1px;font-weight:400}
+@keyframes pop{from{opacity:0;transform:scale(.55) translateY(9px)}}
+.acts{display:flex;justify-content:center;gap:9px;margin-top:15px;height:34px;visibility:hidden}
+.acts.on{visibility:visible}
+.subfoot{text-align:center;font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:11px;letter-spacing:.3px}
+.subfoot b{color:var(--acc2);font-weight:600}

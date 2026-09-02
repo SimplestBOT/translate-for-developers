@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="1.2.0.0" name="translator-ui.app"/>
+  <!-- 阶段 5a（遗留问题 1）：Per-Monitor V2 DPI 感知。
+       WebView2 内容随屏 DPI 缩放（Chromium 原生支持），窗体尺寸按屏 DPI 放大
+       （MainWindow.ScaleForDpi），修复高 DPI 屏上内容偏小。 -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+    </windowsSettings>
+  </application>
+</assembly>
