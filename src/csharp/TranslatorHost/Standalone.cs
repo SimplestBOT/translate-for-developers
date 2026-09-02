@@ -528,9 +528,16 @@ namespace TranslatorHost
 
             private static Icon LoadIcon()
             {
+                // 优先 exe 自身嵌入图标（ApplicationIcon，便携包无需外部 ico 文件）
                 try
                 {
-                    // 复用仓库 icon.ico（与 translator.exe 同源）；缺失则用系统图标兜底
+                    Icon embedded = Icon.ExtractAssociatedIcon(System.Reflection.Assembly.GetExecutingAssembly().Location);
+                    if (embedded != null) return embedded;
+                }
+                catch (Exception) { }
+                try
+                {
+                    // 开发布局兜底：scripts\icon.ico（与旧 translator.exe 同源）
                     string p = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..\\..\\icon.ico");
                     if (System.IO.File.Exists(p)) return new Icon(p, 16, 16);
                 }
