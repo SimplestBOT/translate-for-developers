@@ -88,3 +88,26 @@
   TFD_TEST_REUSE、--open 四页锚点（可附 CDP）。
 - 文档漂移修正：protocol.md 曾记载的 `TFD_WEBUI_DIR` 宿主从未实现，已删。
 - 迁移收官：阶段 0-7 全部完成，AHK=0、桥=0。
+
+---
+
+## 收官后首修（2026-09-02，用户报设置页语言下拉三症状）
+
+- **现象**：单独设置窗（非翻译窗 Popover）点开语言下拉：无法上下滚动、无法选择语言、
+  下拉面板透明度太高（下层卡片文字透过来）。
+- **根因**（与 5d result 页 Popover 同族，settings 页漏网）：四页 `.rv` 入场动画
+  `fill-mode:forwards` 使卡片在动画结束后**永久保留层叠上下文**（Blink 对 filling
+  动画持续保留）；语言下拉 `.dd{position:absolute;z-index:30}` 被困在「翻译语言」卡的
+  上下文内，溢出卡外的部分被 DOM 靠后的「翻译服务/密钥」半透明卡（`--card:rgba(...,.032)`）
+  整块盖住 → 命中测试/滚轮全落在盖板卡上（点不到+滚不动），下层文字透上来（看着透明）。
+- **修复**：四页 `.rv` 改 `fill-mode:backwards`（只保延迟期防闪），动画结束回到自然态，
+  层叠上下文消失，`.dd` 的 z-index:30 回到根上下文生效。视觉无变化（`to` 关键帧本=自然态），
+  顺带消除 forwards 在动画失效时元素永久隐形（base opacity:0）的隐患。result 页 Popover
+  5d 已 portal 化不受此影响；capture/config 页同隐患一并预防修复。
+- **验证**（CDP 真窗取证，隔离实例 TFD_PIPE_NAME+TFD_CONFIG+独立 udd）：修复前
+  `elementFromPoint(下拉列表中部)`=`provrow`（服务卡）、真实鼠标点击落在服务卡 `<i>` 上；
+  修复后=`dditem`，点「日语」→标签变「日语▼」+setLang 落盘 `tgt_lang=ja`，滚轮
+  `ddScroll 0→720 / pageScroll 0`，before/after 截图对比透明消失。result 页回归
+  （wrapH=540+rendered 锚点）通过。
+- **部署注记**：纯 webui 资产修复，无 C# 改动；宿主每次开窗现读 dist HTML，常驻实例
+  无需重启即生效（重开设置窗即可）。
