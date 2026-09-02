@@ -1,5 +1,7 @@
 # Translate for Developers
 
+**简体中文** · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
+
 选中英文文本，按热键即弹出中文翻译。读代码注释、看英文文档、翻论文摘要——**任意软件里都能用**。
 
 在 MATLAB 里选中一段英文注释看不懂？VS Code 遇到英文报错？PDF 里卡壳？
