@@ -119,7 +119,7 @@ TFD_TEST_REUSE=1                        ; 自动驱动结果窗复用流程
   全 async + CancellationToken。
 - **UI 页面**（`src/webui/`，React 19 + TypeScript）：settings/result/capture/config 四页，
   按页单文件构建；与宿主通过 JSON 消息协议通信（契约见 `docs/protocol.md`）。
-- AHK 版本与迁移期 Named Pipe 桥已分别于 v1.4/v1.5 退役删除（备份不含在仓库内）。
+- AHK 版本与迁移期 Named Pipe 桥已分别于 v1.4/v1.5 退役删除。
 
 ## 目录结构
 
