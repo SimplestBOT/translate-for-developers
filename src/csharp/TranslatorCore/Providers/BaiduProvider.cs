@@ -59,34 +59,42 @@ namespace Translator.Core.Providers
                 }
                 catch (HttpStatusException ex)
                 {
-                    throw new TranslateException("百度翻译返回错误（HTTP " + ex.Status + "）。\n请检查网络后重试。");
+                    throw TranslateException.Http(ex.Status, DisplayName);
                 }
                 catch (TimeoutException)
                 {
-                    throw new TranslateException("网络请求超时（15 秒）。\n请检查网络后重试。");
+                    throw TranslateException.Timeout(DisplayName);
                 }
                 catch (Exception ex) when (!(ex is OperationCanceledException))
                 {
-                    throw new TranslateException("网络请求失败：" + ex.Message);
+                    throw TranslateException.Network(DisplayName, ex);
                 }
                 result.Append(ParseResult(body));
             }
             return result.ToString();
         }
 
-        /// <summary>解析单分片响应（多条 dst 以 \n 拼接）。internal 供测试。</summary>
+        /// <summary>解析单分片响应（多条 dst 以 \n 拼接）。异常 →
+        /// TranslateException（带分类码：52003/54001=auth，54003=rate_limited，
+        /// 其余=server）。internal 供测试。</summary>
         internal static string ParseResult(string body)
         {
             var root = JsonUtil.ParseObject(body);
             if (root == null)
-                throw new TranslateException("百度翻译失败：无法解析响应。");
+                throw new TranslateException("百度翻译失败：无法解析响应。", "parse");
 
             string errCode = JsonUtil.GetString(root, "error_code");
             if (errCode != null)
             {
                 string errMsg = JsonUtil.GetString(root, "error_msg") ?? "";
+                if (errCode == "52003" || errCode == "54001")
+                    throw new TranslateException("百度翻译错误 " + errCode + "：" + errMsg
+                        + "\n\n鉴权失败：请检查 APP ID 和密钥是否正确。", "auth");
+                if (errCode == "54003")
+                    throw new TranslateException("百度翻译错误 " + errCode + "：" + errMsg
+                        + "\n\n访问频率受限：请稍后重试，或到百度开放平台开通高级版。", "rate_limited");
                 throw new TranslateException("百度翻译错误 " + errCode + "：" + errMsg
-                    + "\n\n如为 52003/54001，请检查 APP ID 和密钥是否正确；\n如为 54003，请确认已开通该翻译服务。");
+                    + "\n\n如为 52003/54001，请检查 APP ID 和密钥是否正确；\n如为 54003，请确认已开通该翻译服务。", "server");
             }
 
             var list = JsonUtil.GetList(root, "trans_result");
@@ -103,7 +111,7 @@ namespace Translator.Core.Providers
                 if (dsts.Count > 0)
                     return string.Join("\n", dsts);
             }
-            throw new TranslateException("百度翻译失败：无法解析响应。");
+            throw new TranslateException("百度翻译失败：无法解析响应。", "parse");
         }
 
         /// <summary>UTF-8 MD5 小写 hex（等价 AHK Md5Hex，测试含 RFC1321 标准向量）</summary>

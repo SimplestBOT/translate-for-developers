@@ -43,22 +43,25 @@ namespace Translator.Core.Providers
                 }
                 catch (HttpStatusException ex)
                 {
-                    throw new TranslateException("MyMemory 返回错误（HTTP " + ex.Status + "）。\n请检查网络后重试。");
+                    throw TranslateException.Http(ex.Status, DisplayName);
                 }
                 catch (TimeoutException)
                 {
-                    throw new TranslateException("网络请求超时（15 秒）。\n请检查网络后重试。");
+                    throw TranslateException.Timeout(DisplayName);
                 }
                 catch (Exception ex) when (!(ex is OperationCanceledException))
                 {
-                    throw new TranslateException("网络请求失败：" + ex.Message);
+                    throw TranslateException.Network(DisplayName, ex);
                 }
                 result.Append(ParseResult(body));
             }
             return result.ToString();
         }
 
-        /// <summary>解析单分片响应。异常 → TranslateException；internal 供测试。</summary>
+        /// <summary>解析单分片响应。异常 → TranslateException（带分类码）；
+        /// internal 供测试。responseStatus 非 200 时优先按「额度/限流」识别
+        /// （免费号当日配额耗尽返回 403 + MYMEMORY WARNING 文案），其余归
+        /// server（服务端拒绝）。</summary>
         internal static string ParseResult(string body)
         {
             var root = JsonUtil.ParseObject(body);
@@ -74,12 +77,23 @@ namespace Translator.Core.Providers
                 // 无有效译文：优先给出服务端明细（配额耗尽 / 语言对非法等）
                 string details = JsonUtil.GetString(root, "responseDetails");
                 if (!string.IsNullOrEmpty(details))
-                    throw new TranslateException("MyMemory 翻译失败：" + details);
+                    throw new TranslateException("MyMemory 翻译失败：" + details, ClassifyResponseStatus(root, details));
 
                 if (translated != null) // translatedText 存在但为空且无明细：按成功处理（对齐 AHK）
                     return translated;
             }
-            throw new TranslateException("MyMemory 翻译失败：无法解析服务响应。");
+            throw new TranslateException("MyMemory 翻译失败：无法解析服务响应。", "parse");
+        }
+
+        private static string ClassifyResponseStatus(Dictionary<string, object> root, string details)
+        {
+            int status = JsonUtil.GetInt(root, "responseStatus");
+            string up = details.ToUpperInvariant();
+            bool quota = up.Contains("LIMIT") || up.Contains("QUOTA")
+                || up.Contains("FREE TRANSLATIONS") || up.Contains("MAXIMUM");
+            if (status == 429 || status == 403 || quota)
+                return "rate_limited";
+            return "server";
         }
     }
 }

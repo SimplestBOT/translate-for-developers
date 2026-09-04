@@ -19,8 +19,9 @@ MATLAB, VS Code, 브라우저, PDF 리더 등 **복사를 지원하는 모든 �
 - **완전히 새로운 다크 UI(v1.1)**: 시스템 내장 WebView2로 렌더링 —— 글래스 카드, 등장 애니메이션, 스캔 빔 로딩 바, 스켈레톤 화면, 키캡 스프링 효과; 번역은 **비동기** 처리되어 창이 즉시 열리고 애니메이션이 끊기지 않습니다
 - **원본 언어 자동 감지**(수동 지정도 가능), **대상 언어 30+ 종**(중국어·영어·일본어·한국어·프랑스어·독일어·스페인어·러시아어…)
 - 클립보드 자동 백업/복원 —— 복사해둔 내용을 **절대 훼손하지 않습니다**
-- 번역 서비스 선택 가능: **MyMemory**(무료, 가입 불필요) / **바이두 번역**(무료 티어, 더 안정적인 품질)
+- 번역 서비스 선택 가능: **MyMemory**(무료, 가입 불필요) / **바이두 번역** / **DeepL** / **AI LLM**(OpenAI 호환: OpenAI/DeepSeek/Kimi/지푸/Ollama/사용자 정의)
 - 긴 텍스트 자동 분할로 바이두의 요청당 6000바이트 제한 우회
+- LLM 번역은 코드/경로/URL/식별자를 플레이스홀더로 보호(복원 실패 시 조용히 반환하지 않음)
 - 세심한 인터랙션: 제목표시줄 드래그 이동, `Esc`로 닫기, `Enter`로 복사, 복사 버튼이 초록색 체크 표시로 전환, 우하단 토스트 알림(투박한 메시지 박스 대신)
 - 트레이 메뉴: **단축키 변경(키보드로 직접 누르기만 하면 됨)**, **번역 서비스 전환**, 언어 선택, 종료
 - 설치 불필요한 포터블 방식: C# 호스트 + WebView2 렌더링(시스템 제공 런타임)
@@ -40,12 +41,21 @@ MATLAB, VS Code, 브라우저, PDF 리더 등 **복사를 지원하는 모든 �
 hotkey=^!d              ; 번역 단축키 (트레이 메뉴에서 변경 가능)
 src_lang=auto           ; 원본 언어: auto=자동 감지, 또는 zh-CN/en/ja/ko/…
 tgt_lang=zh-CN          ; 대상 언어 (기본값: 중국어 간체)
-provider=mymemory       ; mymemory 또는 baidu
+provider=mymemory       ; mymemory / baidu / deepl / llm
 baidu_appid=            ; 바이두 번역 APP ID (바이두 사용 시 입력)
 baidu_secret=           ; 바이두 번역 시크릿 키 (바이두 사용 시 입력)
+deepl_key=              ; DeepL API Key (DeepL 사용 시 입력)
+deepl_endpoint=         ; 선택(Pro 엔드포인트); 비우면 무료 엔드포인트
+llm_preset=             ; AI LLM 프리셋: openai/deepseek/kimi/zhipu/ollama/custom
+llm_base_url=           ; OpenAI 호환 Base URL (예: https://api.deepseek.com/v1)
+llm_api_key=            ; API Key (로컬 Ollama는 비워도 됨)
+llm_model=              ; 모델 이름 (예: gpt-4o-mini / deepseek-chat)
+llm_prompt=             ; 선택적 번역 프롬프트; 비우면 내장 기본값
 ```
 
 > 트레이 메뉴에서 단축키 변경·서비스 전환 시 이 파일에 자동 저장됩니다. 수동 편집은 불필요합니다.
+
+> **키 보안**: 바이두 APP ID / 시크릿 키는 Windows **DPAPI**로 암호화되어 저장됩니다(`dpapi:` 접두사 암호문, 이 PC의 현재 Windows 계정에서만 복호화 가능). `config.conf`를 다른 PC로 복사해도 키를 읽을 수 없습니다. 구버전 평문 파일은 첫 실행 시 자동 마이그레이션됩니다. 진단 로그에 키 내용은 기록되지 않으며, `config.conf`는 `.gitignore`에서 제외되어 있습니다(수동 커밋 금지).
 
 ## 지원 언어
 
@@ -84,6 +94,8 @@ baidu_secret=           ; 바이두 번역 시크릿 키 (바이두 사용 시 �
 |---|---|---|---|
 | MyMemory | 무료 | 불필요 | 하루 약 5만 자, 응답 약 1초 |
 | 바이두 번역 | 무료 | 필요 | 더 안정적인 품질, 긴 텍스트 분할 지원 |
+| DeepL | 월 50만 자 무료 | 필요 | 고품질, 30+ 개 언어, Pro 엔드포인트 지원 |
+| AI LLM | 서비스별 | 서비스별 | OpenAI 호환 API; DeepSeek/Kimi/지푸/Ollama 프리셋 내장; **개발자 콘텐츠 보호**(코드/경로/URL 미번역) |
 
 **바이두 무료 버전 개통 방법**: fanyi-api.baidu.com → 로그인 → 콘솔 → 앱 생성(일반 텍스트 번역/스탠다드)
 → APP ID와 시크릿 키 복사 → 트레이 메뉴 "서비스 전환" → 바이두 → 인증 정보 입력.

@@ -343,8 +343,24 @@ namespace TranslatorHost
                 if (back.Current.Provider != "baidu" || back.Current.TargetLang != "ja"
                     || back.Current.BaiduSecret != "selftest-secret")
                     throw new Exception("config 回读不一致");
+                // 优化 3：密钥落盘必须为 DPAPI 密文（无明文）
+                if (!File.ReadAllText(tmp).Contains("baidu_secret=" + SecretProtector.Prefix))
+                    throw new Exception("config 密钥未加密落盘");
                 File.Delete(tmp);
-                Console.WriteLine("config=ok");
+                Console.WriteLine("config=ok (dpapi-encrypted)");
+
+                // P1 UIA Provider 冒烟（隔离子进程；结果环境相关，不计 PASS/FAIL，
+                // 只验证 子进程启动→超时/返回→解析 全链路不炸宿主）。连续两次
+                // 同键调用验证负缓存：若首查为确定性失败，第二查应 skip(cooldown)
+                string uiaText, uiaWhy;
+                bool uiaHit = UiaSelectionProvider.TryReadSelection(0xDEAD, out uiaText, out uiaWhy);
+                Console.WriteLine("uia-provider=" + (uiaHit ? "hit(len=" + uiaText.Length + ")" : "miss(" + uiaWhy + ")"));
+                if (!uiaHit)
+                {
+                    string t2, w2;
+                    bool hit2 = UiaSelectionProvider.TryReadSelection(0xDEAD, out t2, out w2);
+                    Console.WriteLine("uia-provider-2nd=" + (hit2 ? "hit" : "miss(" + w2 + ")"));
+                }
 
                 Console.WriteLine("SELFTEST PASS");
                 return 0;

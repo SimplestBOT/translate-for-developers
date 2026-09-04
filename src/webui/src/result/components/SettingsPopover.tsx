@@ -38,7 +38,7 @@ interface Props {
 }
 
 const langLabel = (id: string) => (id === 'auto' ? 'AUTO' : id.toUpperCase())
-const providerName = (p: ProviderId) => (p === 'baidu' ? '百度翻译' : 'MyMemory')
+const providerName = (p: ProviderId) => (p === 'baidu' ? '百度翻译' : p === 'deepl' ? 'DeepL' : p === 'llm' ? 'AI 大模型' : 'MyMemory')
 
 export default function SettingsPopover(p: Props) {
   const [open, setOpen] = useState(false)
@@ -58,7 +58,7 @@ export default function SettingsPopover(p: Props) {
 
   const src = srcOv ?? p.init?.src ?? 'auto'
   const tgt = tgtOv ?? p.init?.tgt ?? 'zh-CN'
-  const prov = provider ?? (p.init?.providerKey === 'baidu' ? 'baidu' : 'mymemory')
+  const prov = provider ?? ((['baidu','deepl','llm'].includes(p.init?.providerKey ?? '') ? p.init?.providerKey : 'mymemory') as ProviderId)
   const keys = hotkeyKeys ?? p.init?.hotkeyKeys ?? []
   const langs = p.init?.langs ?? []
 
@@ -94,6 +94,7 @@ export default function SettingsPopover(p: Props) {
       on<ErrorFrame>('error', (d) => {
         // 只接设置类错误；translate_failed 由 App 归入翻译错误卡
         if (d.code === 'no_baidu_keys') setHint(d.message)
+        else if (d.code === 'provider_not_ready') setHint(d.message)
         else if (d.code === 'hotkey_invalid') {
           setCapturing(false)
           setCapturedKeys(null)

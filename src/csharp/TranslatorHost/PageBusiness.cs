@@ -10,6 +10,8 @@
 //=============================================================
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Translator.Core.Clipboard;
@@ -59,7 +61,10 @@ namespace TranslatorHost
             get { return _config != null ? _config.Current : new AppConfig(); }
         }
 
-        /// <summary>Core 初始化（启动时以独立模式配置路径调用一次）。</summary>
+        /// <summary>Core 初始化（启动时以独立模式配置路径调用一次）。
+        /// 迁移：config.conf 中密钥仍为明文（无 dpapi: 前缀）时立即加密回写
+        /// ——此后磁盘上永无明文密钥（优化 3）；回写失败不阻塞启动（下次
+        /// 任一配置保存动作会再迁移）。</summary>
         public bool InitFromConfigPath(string configPath)
         {
             if (string.IsNullOrEmpty(configPath))
@@ -68,6 +73,7 @@ namespace TranslatorHost
             {
                 _config = new ConfigStore(configPath);
                 _service = new TranslationService(_config);
+                MigrateSecretsToDpapi();
                 return true;
             }
             catch (Exception ex)
@@ -76,6 +82,29 @@ namespace TranslatorHost
                 _config = null;
                 _service = null;
                 return false;
+            }
+        }
+
+        /// <summary>密钥明文 → DPAPI 迁移（启动一次性；幂等——已加密即跳过）。
+        /// 只记迁移是否发生，不记密钥内容。</summary>
+        private void MigrateSecretsToDpapi()
+        {
+            try
+            {
+                string file = File.ReadAllText(_config.FilePath, Encoding.UTF8);
+                bool plain = (file.IndexOf("baidu_appid=", StringComparison.Ordinal) >= 0
+                              && file.IndexOf("baidu_appid=" + SecretProtector.Prefix, StringComparison.Ordinal) < 0)
+                          || (file.IndexOf("baidu_secret=", StringComparison.Ordinal) >= 0
+                              && file.IndexOf("baidu_secret=" + SecretProtector.Prefix, StringComparison.Ordinal) < 0);
+                if (!plain) return;
+                if (_config.WriteSync(_config.Current))   // WriteSyncCore 恒加密落盘
+                    Program.LogHost("config 密钥已迁移 DPAPI 加密（明文行已消除）");
+                else
+                    Program.LogHost("config 密钥迁移回写失败（磁盘/权限），下次保存时重试");
+            }
+            catch (Exception ex)
+            {
+                Program.LogHost("config 密钥迁移检查失败: " + ex.GetType().Name);
             }
         }
 
@@ -147,6 +176,10 @@ namespace TranslatorHost
                     return self && OwnsBusiness && HandleSetProvider(winId, rid, env);
                 case "saveBaidu":
                     return self && OwnsBusiness && HandleSaveBaidu(winId, rid, env);
+                case "saveDeepl":
+                    return self && OwnsBusiness && HandleSaveDeepl(winId, rid, env);
+                case "saveLlm":
+                    return self && OwnsBusiness && HandleSaveLlm(winId, rid, env);
                 case "openurl":
                 {
                     // 域名白名单校验在宿主（仅自开窗受理）
@@ -196,15 +229,21 @@ namespace TranslatorHost
             Program.LogHost("tray setLang " + which + "=" + id);
         }
 
-        /// <summary>托盘菜单切提供商；百度无密钥时返回 false（气泡报错文案在 LastError）。</summary>
+        /// <summary>托盘菜单切提供商；目标未配置时返回 false（气泡报错文案在 LastError）。</summary>
         public bool SetProviderSelf(string p)
         {
-            if (!OwnsBusiness || (p != "baidu" && p != "mymemory"))
+            if (!OwnsBusiness)
                 return true;
-            if (p == "baidu" && (string.IsNullOrEmpty(_config.Current.BaiduAppid)
-                || string.IsNullOrEmpty(_config.Current.BaiduSecret)))
+            string missing = null;
+            if (p == "baidu" && !_config.Current.HasBaiduKeys())
+                missing = "尚未配置百度翻译密钥，请先在设置页完成配置";
+            else if (p == "deepl" && !_config.Current.HasDeeplKey())
+                missing = "尚未配置 DeepL API Key，请先在设置页完成配置";
+            else if (p == "llm" && !_config.Current.HasLlmConfig())
+                missing = "尚未配置 AI 大模型服务，请先在设置页完成配置";
+            if (missing != null)
             {
-                NoteError("尚未配置百度翻译密钥，请先在「配置百度密钥…」完成配置");
+                NoteError(missing);
                 return false;
             }
             var next = _config.Current;
@@ -219,17 +258,26 @@ namespace TranslatorHost
         public string LastError { get; private set; }
         internal void NoteError(string msg) { LastError = msg; }
 
-        /// <summary>托盘提供商行点击切换（AHK ToggleProvider 语义）：mymemory ↔ baidu。</summary>
+        /// <summary>托盘提供商行点击切换（AHK ToggleProvider 语义扩展）：
+        /// 在「已配置可用」的 Provider 间循环（mymemory 恒可用；baidu/deepl/llm
+        /// 需配置齐备才参与），从当前项顺延到下一个。</summary>
         public void ToggleProviderSelf()
         {
-            string target = CurrentConfig.Provider == "baidu" ? "mymemory" : "baidu";
+            string cur = CurrentConfig.Provider;
+            // 可用环：mymemory 恒在；其余按配置就绪过滤
+            var ring = new List<string> { "mymemory" };
+            if (_config.Current.HasBaiduKeys()) ring.Add("baidu");
+            if (_config.Current.HasDeeplKey()) ring.Add("deepl");
+            if (_config.Current.HasLlmConfig()) ring.Add("llm");
+            int idx = ring.IndexOf(cur);
+            string target = ring[(idx + 1) % ring.Count];   // 当前不在环内（未配置项）→ 落 mymemory
             if (!SetProviderSelf(target))
             {
                 if (Notify != null) Notify("translator", LastError);
                 return;
             }
             if (Notify != null)
-                Notify("translator", "翻译提供商已切换为：" + (target == "baidu" ? "百度翻译" : "MyMemory"));
+                Notify("translator", "翻译提供商已切换为：" + ProviderCatalog.DisplayName(target));
         }
 
         public bool IsSelfWindow(int winId)
@@ -288,6 +336,7 @@ namespace TranslatorHost
             if (page == "settings")
             {
                 // settings init：热键键帽 + 常用置顶语言表（对齐 AHK SettingsInitJson）
+                // 优化 4：新增 deepl/llm 配置字段（页面按所选 Provider 条件渲染配置卡）
                 payload = JsonUtil.Serialize(new Dictionary<string, object>
                 {
                     { "hotkey", CaptureManager.FormatHotkey(cfg.Hotkey) },
@@ -298,6 +347,13 @@ namespace TranslatorHost
                     { "hasKeys", !string.IsNullOrEmpty(cfg.BaiduAppid) && !string.IsNullOrEmpty(cfg.BaiduSecret) },
                     { "appid", cfg.BaiduAppid ?? "" },
                     { "secret", cfg.BaiduSecret ?? "" },
+                    { "deeplKey", cfg.DeeplKey ?? "" },
+                    { "deeplEndpoint", cfg.DeeplEndpoint ?? "" },
+                    { "llmPreset", string.IsNullOrEmpty(cfg.LlmPreset) ? "custom" : cfg.LlmPreset },
+                    { "llmBaseUrl", cfg.LlmBaseUrl ?? "" },
+                    { "llmApiKey", cfg.LlmApiKey ?? "" },
+                    { "llmModel", cfg.LlmModel ?? "" },
+                    { "llmPrompt", cfg.LlmPrompt ?? "" },
                     { "ndrag", ndrag },
                     { "langs", BuildLangsList() }
                 });
@@ -314,7 +370,7 @@ namespace TranslatorHost
                     { "srcText", text ?? "" },
                     { "srcLangLabel", cfg.SourceLang == "auto" ? "AUTO" : cfg.SourceLang.ToUpperInvariant() },
                     { "tgtLangLabel", cfg.TargetLang.ToUpperInvariant() },
-                    { "provider", cfg.Provider == "baidu" ? "百度翻译" : "MyMemory" },
+                    { "provider", ProviderCatalog.DisplayName(cfg.Provider) },
                     { "providerKey", cfg.Provider },
                     { "ndrag", ndrag },
                     
@@ -411,12 +467,20 @@ namespace TranslatorHost
         {
             var args = JsonUtil.GetList(env, "payload");
             string p = args != null && args.Count > 0 ? args[0] as string : null;
-            if (p != "baidu" && p != "mymemory")
+            if (p != "baidu" && p != "mymemory" && p != "deepl" && p != "llm")
                 return true;
-            if (p == "baidu" && (string.IsNullOrEmpty(_config.Current.BaiduAppid)
-                || string.IsNullOrEmpty(_config.Current.BaiduSecret)))
+            // 门禁：切换到需配置的 Provider 时校验前置（错误帧 code=provider_not_ready，
+            // 页面把焦点引导到对应配置卡）
+            string missing = null;
+            if (p == "baidu" && !_config.Current.HasBaiduKeys())
+                missing = "尚未配置百度翻译密钥";
+            else if (p == "deepl" && !_config.Current.HasDeeplKey())
+                missing = "尚未配置 DeepL API Key";
+            else if (p == "llm" && !_config.Current.HasLlmConfig())
+                missing = "尚未配置 AI 大模型的 Base URL 和模型";
+            if (missing != null)
             {
-                PushPageError(winId, rid, "no_baidu_keys", "尚未配置百度翻译密钥");
+                PushPageError(winId, rid, "provider_not_ready", missing);
                 return true;
             }
             var next = _config.Current;
@@ -426,6 +490,65 @@ namespace TranslatorHost
             Push(winId, Protocol.PageEnvelope("providerUpdated", JsonUtil.Serialize(
                 new Dictionary<string, object> { { "provider", p } }), rid));
             Program.LogHost("setProvider " + p + " (self)");
+            return true;
+        }
+
+        private bool HandleSaveDeepl(int winId, int rid, Dictionary<string, object> env)
+        {
+            var args = JsonUtil.GetList(env, "payload");
+            string key = args != null && args.Count > 0 ? args[0] as string : null;
+            string endpoint = args != null && args.Count > 1 ? args[1] as string : null;
+            if (string.IsNullOrEmpty(key))
+            {
+                PushPageError(winId, rid, "save_failed", "DeepL API Key 不能为空");
+                return true;
+            }
+            var next = _config.Current;
+            next.DeeplKey = key.Trim();
+            next.DeeplEndpoint = string.IsNullOrEmpty(endpoint) ? null : endpoint.Trim();
+            next.Provider = "deepl";
+            if (!_config.WriteSync(next))
+            {
+                PushPageError(winId, rid, "save_failed", "配置写盘失败");
+                return true;
+            }
+            if (MenuRefresh != null) MenuRefresh();
+            Push(winId, Protocol.PageEnvelope("deeplSaved", JsonUtil.Serialize(
+                new Dictionary<string, object> { { "ok", true } }), rid));
+            Program.LogHost("saveDeepl ok (self) keyLen=" + key.Trim().Length);
+            return true;
+        }
+
+        private bool HandleSaveLlm(int winId, int rid, Dictionary<string, object> env)
+        {
+            var args = JsonUtil.GetList(env, "payload");
+            string preset = args != null && args.Count > 0 ? args[0] as string : null;
+            string baseUrl = args != null && args.Count > 1 ? args[1] as string : null;
+            string apiKey = args != null && args.Count > 2 ? args[2] as string : null;
+            string model = args != null && args.Count > 3 ? args[3] as string : null;
+            string prompt = args != null && args.Count > 4 ? args[4] as string : null;
+            if (string.IsNullOrEmpty(baseUrl) || string.IsNullOrEmpty(model))
+            {
+                PushPageError(winId, rid, "save_failed", "Base URL 和模型名不能为空");
+                return true;
+            }
+            var next = _config.Current;
+            next.LlmPreset = string.IsNullOrEmpty(preset) ? "custom" : preset;
+            next.LlmBaseUrl = baseUrl.Trim();
+            next.LlmApiKey = string.IsNullOrEmpty(apiKey) ? null : apiKey.Trim();
+            next.LlmModel = model.Trim();
+            next.LlmPrompt = string.IsNullOrEmpty(prompt) ? null : prompt.Trim();
+            next.Provider = "llm";
+            if (!_config.WriteSync(next))
+            {
+                PushPageError(winId, rid, "save_failed", "配置写盘失败");
+                return true;
+            }
+            if (MenuRefresh != null) MenuRefresh();
+            Push(winId, Protocol.PageEnvelope("llmSaved", JsonUtil.Serialize(
+                new Dictionary<string, object> { { "ok", true } }), rid));
+            Program.LogHost("saveLlm ok (self) preset=" + next.LlmPreset
+                + " model=" + next.LlmModel + " keyLen=" + (next.LlmApiKey ?? "").Length);
             return true;
         }
 

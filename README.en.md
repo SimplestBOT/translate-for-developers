@@ -19,8 +19,9 @@ It works in **every app that supports copying** — MATLAB, VS Code, browsers, P
 - **All-new dark UI (v1.1)**: rendered by the system's built-in WebView2 — glassy cards, entrance animations, scanning-beam loader, skeleton screens, springy keycap effects; translation is **asynchronous**, so the window opens instantly and animations never stutter
 - **Automatic source-language detection** (manual selection also available), **30+ target languages** (Chinese, English, Japanese, Korean, French, German, Spanish, Russian…)
 - Clipboard is backed up and restored automatically — **never destroys** what you had copied
-- Choose your translation service: **MyMemory** (free, no registration) / **Baidu Translate** (free tier, better quality)
+- Choose your translation service: **MyMemory** (free, no registration) / **Baidu Translate** / **DeepL** / **AI LLM** (OpenAI-compatible: OpenAI/DeepSeek/Kimi/Zhipu/Ollama/custom)
 - Long text is auto-split to bypass Baidu's 6000-byte per-request limit
+- LLM translation protects code/paths/URLs/identifiers via placeholders (failed restore never returns silently)
 - Polished interactions: draggable title bar, `Esc` to close, `Enter` to copy, copy button turns green with a checkmark, toast notifications in the corner (no more clunky message boxes)
 - Tray menu: **change the hotkey (just press it on your keyboard)**, **switch translation service**, pick languages, exit
 - Fully portable: C# host + WebView2 rendering (system-provided runtime), runs without installation
@@ -40,12 +41,21 @@ Config file `config.conf` (in the `scripts/` folder next to `bridge/`, auto-crea
 hotkey=^!d              ; translation hotkey (changeable from the tray menu)
 src_lang=auto           ; source language: auto = detect, or zh-CN/en/ja/ko/…
 tgt_lang=zh-CN          ; target language (default: Simplified Chinese)
-provider=mymemory       ; mymemory or baidu
+provider=mymemory       ; mymemory / baidu / deepl / llm
 baidu_appid=            ; Baidu Translate APP ID (required for Baidu)
 baidu_secret=           ; Baidu Translate secret (required for Baidu)
+deepl_key=              ; DeepL API Key (required for DeepL)
+deepl_endpoint=         ; optional Pro endpoint; empty = free endpoint
+llm_preset=             ; AI LLM preset: openai/deepseek/kimi/zhipu/ollama/custom
+llm_base_url=           ; OpenAI-compatible Base URL (e.g. https://api.deepseek.com/v1)
+llm_api_key=            ; API Key (empty for local Ollama)
+llm_model=              ; model name (e.g. gpt-4o-mini / deepseek-chat)
+llm_prompt=             ; optional translation prompt; empty = built-in default
 ```
 
 > Changing the hotkey or service from the tray menu writes to this file automatically — no manual editing needed.
+
+> **Key security**: The Baidu APP ID / secret are encrypted with Windows **DPAPI** before being written to disk (`dpapi:` prefixed ciphertext, decryptable only by the current Windows account on this machine); copying `config.conf` to another machine cannot reveal the secret. Legacy plaintext files are migrated automatically at first startup. Diagnostic logs never contain key material; `config.conf` is excluded via `.gitignore` — never commit it manually.
 
 ## Supported languages
 
@@ -84,6 +94,8 @@ Source language is **auto-detected** by default (manual selection available); 30
 |---|---|---|---|
 | MyMemory | Free | Not required | ~50,000 chars/day, ~1s response |
 | Baidu Translate | Free | Required | More consistent quality, long-text splitting supported |
+| DeepL | 500k chars/month free | Required | High quality, 30+ languages, Pro endpoint supported |
+| AI LLM | per provider | varies | OpenAI-compatible API; built-in DeepSeek/Kimi/Zhipu/Ollama presets; **developer content protection** (code/paths/URLs stay untranslated) |
 
 **To enable the free Baidu tier**: fanyi-api.baidu.com → sign in → Console → Create app (General Text Translation / Standard)
 → copy the APP ID and secret → tray menu "Switch service" → Baidu → enter your credentials.

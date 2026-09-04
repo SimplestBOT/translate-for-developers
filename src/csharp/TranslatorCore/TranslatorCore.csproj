@@ -16,6 +16,8 @@
     <!-- JSON 走 GAC 的 System.Web.Extensions（JavaScriptSerializer），零新增部署 DLL -->
     <Reference Include="System.Web.Extensions" />
     <Reference Include="System.Net.Http" />
+    <!-- 密钥 DPAPI 加密（ProtectedData，framework 程序集 GAC 自带） -->
+    <Reference Include="System.Security" />
     <!-- Clipboard 模块需要 WinForms（宿主在 STA UI 线程调用） -->
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>

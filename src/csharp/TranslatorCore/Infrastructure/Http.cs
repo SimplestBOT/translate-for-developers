@@ -7,6 +7,7 @@
 using System;
 using System.Net;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -67,6 +68,57 @@ namespace Translator.Core.Infrastructure
                 if ((int)resp.StatusCode != 200)
                     throw new HttpStatusException((int)resp.StatusCode);
                 return await resp.Content.ReadAsStringAsync();
+            }
+        }
+
+        /// <summary>
+        /// POST 表单（Content-Type: application/x-www-form-urlencoded）。
+        /// form：已编码的键值串（调用方负责 Uri.EscapeDataString）。
+        /// 异常映射与 GetStringAsync 一致（HttpStatusException/Timeout/
+        /// HttpRequestException 原样，外部取消原样上抛）。
+        /// </summary>
+        public static async Task<string> PostFormAsync(string url, string form, System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string, string>> headers, CancellationToken ct)
+        {
+            using (var content = new StringContent(form, Encoding.UTF8, "application/x-www-form-urlencoded"))
+                return await PostCoreAsync(url, content, headers, ct);
+        }
+
+        /// <summary>POST JSON 体（application/json）。json：已序列化字符串。</summary>
+        public static async Task<string> PostJsonAsync(string url, string json, System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string, string>> headers, CancellationToken ct)
+        {
+            using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
+                return await PostCoreAsync(url, content, headers, ct);
+        }
+
+        private static async Task<string> PostCoreAsync(string url, HttpContent content,
+            System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string, string>> headers, CancellationToken ct)
+        {
+            string tag = url.Split('/')[2];
+            Log("POST https://" + tag + " ...");
+            using (var req = new HttpRequestMessage(HttpMethod.Post, url))
+            {
+                req.Content = content;
+                if (headers != null)
+                    foreach (var h in headers)
+                        req.Headers.TryAddWithoutValidation(h.Key, h.Value);
+                HttpResponseMessage resp;
+                try
+                {
+                    resp = await Client.SendAsync(req, HttpCompletionOption.ResponseContentRead, ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    if (ct.IsCancellationRequested) throw;
+                    Log("POST " + tag + " -> timeout");
+                    throw new TimeoutException("网络请求超时（" + (ApiTimeoutMs / 1000) + " 秒）");
+                }
+                using (resp)
+                {
+                    Log("POST " + tag + " -> HTTP " + (int)resp.StatusCode);
+                    if ((int)resp.StatusCode != 200)
+                        throw new HttpStatusException((int)resp.StatusCode);
+                    return await resp.Content.ReadAsStringAsync();
+                }
             }
         }
 

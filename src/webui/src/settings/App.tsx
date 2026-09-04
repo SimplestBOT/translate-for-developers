@@ -1,17 +1,20 @@
 //=============================================================
-// settings/App.tsx - 设置页编排（阶段 4a React 版）
-// 只做消息编排与状态；业务仍在 AHK（热键捕获流）与 C#（配置写方）。
-// 消息契约 = docs/protocol.md；与 legacy scripts/html/settings.html 逐项对齐。
-// 组件均为受控件（LangSelect/ProviderPicker/BaiduKeysCard/HotkeyCard），
-// 为遗留项「设置集中到翻译主窗口（组件/Popover）」预留复用结构。
+// settings/App.tsx - 设置页编排（阶段 4a React 版；优化 4 扩展）
+// 只做消息编排与状态；业务在 C#（配置写方）。
+// 消息契约 = docs/protocol.md；组件均为受控件。
+// 优化 4：Provider 四选（MyMemory/百度/DeepL/AI 大模型）——密钥卡按所选
+//   Provider 条件渲染；setProvider 门禁失败（provider_not_ready）引导到
+//   对应配置卡（keysPulse 复用为 pulse 目标标记）。
 //=============================================================
 import { useEffect, useState } from 'react'
 import { on, post } from '../bridge/protocol'
 import type {
   BaiduSaved,
+  DeeplSaved,
   ErrorFrame,
   HotkeyPayload,
   LangInfo,
+  LlmSaved,
   ProviderId,
   ProviderUpdated,
   SettingsInit,
@@ -20,6 +23,8 @@ import HotkeyCard from './components/HotkeyCard'
 import LangSelect from './components/LangSelect'
 import ProviderPicker from './components/ProviderPicker'
 import BaiduKeysCard from './components/BaiduKeysCard'
+import DeepLCard from './components/DeepLCard'
+import LlmCard from './components/LlmCard'
 
 interface State {
   inited: boolean
@@ -31,13 +36,24 @@ interface State {
   hasKeys: boolean
   appid: string
   secret: string
+  deeplKey: string
+  deeplEndpoint: string
+  llmPreset: string
+  llmBaseUrl: string
+  llmApiKey: string
+  llmModel: string
+  llmPrompt: string
   hotkeyKeys: string[]
   capturing: boolean
   capturedKeys: string[] | null
   hkState: string
   hint: string
   keysPulse: number
+  deeplPulse: number
+  llmPulse: number
   saveDone: number
+  deeplSaveDone: number
+  llmSaveDone: number
 }
 
 const INITIAL: State = {
@@ -50,13 +66,32 @@ const INITIAL: State = {
   hasKeys: false,
   appid: '',
   secret: '',
+  deeplKey: '',
+  deeplEndpoint: '',
+  llmPreset: 'custom',
+  llmBaseUrl: '',
+  llmApiKey: '',
+  llmModel: '',
+  llmPrompt: '',
   hotkeyKeys: [],
   capturing: false,
   capturedKeys: null,
   hkState: '',
   hint: '',
   keysPulse: 0,
+  deeplPulse: 0,
+  llmPulse: 0,
   saveDone: 0,
+  deeplSaveDone: 0,
+  llmSaveDone: 0,
+}
+
+// Provider 显示名（页脚）
+const PNAME: Record<ProviderId, string> = {
+  mymemory: 'MyMemory',
+  baidu: '百度翻译',
+  deepl: 'DeepL',
+  llm: 'AI 大模型',
 }
 
 export default function App() {
@@ -80,6 +115,13 @@ export default function App() {
           hasKeys: !!d.hasKeys,
           appid: d.appid || '',
           secret: d.secret || '',
+          deeplKey: d.deeplKey || '',
+          deeplEndpoint: d.deeplEndpoint || '',
+          llmPreset: d.llmPreset || 'custom',
+          llmBaseUrl: d.llmBaseUrl || '',
+          llmApiKey: d.llmApiKey || '',
+          llmModel: d.llmModel || '',
+          llmPrompt: d.llmPrompt || '',
           hotkeyKeys: d.hotkeyKeys ?? [],
           capturing: false,
           capturedKeys: null,
@@ -110,9 +152,20 @@ export default function App() {
       on<BaiduSaved>('baiduSaved', () =>
         patch({ hasKeys: true, saveDone: Date.now() }),
       ),
+      on<DeeplSaved>('deeplSaved', () =>
+        patch({ deeplSaveDone: Date.now() }),
+      ),
+      on<LlmSaved>('llmSaved', () =>
+        patch({ llmSaveDone: Date.now() }),
+      ),
       on<ErrorFrame>('error', (d) => {
-        if (d.code === 'no_baidu_keys') {
-          patch({ hint: d.message, keysPulse: Date.now() })
+        if (d.code === 'no_baidu_keys' || d.code === 'provider_not_ready') {
+          // 门禁失败：提示 + 让对应配置卡抖动（脉冲键）
+          patch({ hint: d.message })
+          if (d.code === 'no_baidu_keys' || d.message.includes('百度'))
+            patch({ keysPulse: Date.now() })
+          else if (d.message.includes('DeepL')) patch({ deeplPulse: Date.now() })
+          else if (d.message.includes('大模型')) patch({ llmPulse: Date.now() })
         } else if (d.code === 'hotkey_invalid') {
           patch({ hint: '', capturing: false, hotkeyKeys: [d.message] })
         } else if (d.code === 'hotkey_busy') {
@@ -161,7 +214,7 @@ export default function App() {
         <div className="logo">译</div>
         <div className="brand">translator · 设置</div>
         <div className="pair">
-          <span className="chip">v1.5</span>
+          <span className="chip">v1.6</span>
         </div>
         <button className="xbtn" title="关闭" onClick={() => post('close')}>
           ✕
@@ -226,31 +279,85 @@ export default function App() {
           <div className={'phint' + (st.hint ? ' show' : '')}>{st.hint}</div>
         </section>
 
-        <section
-          className={'card rv' + (st.keysPulse ? ' pulse' : '')}
-          style={{ ['--d' as string]: '160ms' }}
-          key={'keys-' + st.keysPulse}
-        >
-          <div className="flabel">
-            <span>百度翻译密钥</span>
-            <b style={{ color: st.hasKeys ? 'var(--ok)' : 'var(--faint)' }}>
-              {st.hasKeys ? '已配置' : '未配置'}
-            </b>
-          </div>
-          <BaiduKeysCard
-            appid={st.appid}
-            secret={st.secret}
-            saveDone={st.saveDone}
-            onAppidChange={(v) => patch({ appid: v })}
-            onSecretChange={(v) => patch({ secret: v })}
-            onSave={(a, s) => post('saveBaidu', a, s)}
-          />
-        </section>
+        {st.provider === 'baidu' && (
+          <section
+            className={'card rv' + (st.keysPulse ? ' pulse' : '')}
+            style={{ ['--d' as string]: '160ms' }}
+            key={'keys-' + st.keysPulse}
+          >
+            <div className="flabel">
+              <span>百度翻译密钥</span>
+              <b style={{ color: st.hasKeys ? 'var(--ok)' : 'var(--faint)' }}>
+                {st.hasKeys ? '已配置' : '未配置'}
+              </b>
+            </div>
+            <BaiduKeysCard
+              appid={st.appid}
+              secret={st.secret}
+              saveDone={st.saveDone}
+              onAppidChange={(v) => patch({ appid: v })}
+              onSecretChange={(v) => patch({ secret: v })}
+              onSave={(a, s) => post('saveBaidu', a, s)}
+            />
+          </section>
+        )}
+
+        {st.provider === 'deepl' && (
+          <section
+            className={'card rv' + (st.deeplPulse ? ' pulse' : '')}
+            style={{ ['--d' as string]: '160ms' }}
+            key={'deepl-' + st.deeplPulse}
+          >
+            <div className="flabel">
+              <span>DeepL API</span>
+              <b style={{ color: st.deeplKey ? 'var(--ok)' : 'var(--faint)' }}>
+                {st.deeplKey ? '已配置' : '未配置'}
+              </b>
+            </div>
+            <DeepLCard
+              apiKey={st.deeplKey}
+              endpoint={st.deeplEndpoint}
+              saveDone={st.deeplSaveDone}
+              onKeyChange={(v) => patch({ deeplKey: v })}
+              onEndpointChange={(v) => patch({ deeplEndpoint: v })}
+              onSave={(k, e) => post('saveDeepl', k, e)}
+            />
+          </section>
+        )}
+
+        {st.provider === 'llm' && (
+          <section
+            className={'card rv' + (st.llmPulse ? ' pulse' : '')}
+            style={{ ['--d' as string]: '160ms' }}
+            key={'llm-' + st.llmPulse}
+          >
+            <div className="flabel">
+              <span>AI 大模型（OpenAI 兼容）</span>
+              <b style={{ color: st.llmBaseUrl && st.llmModel ? 'var(--ok)' : 'var(--faint)' }}>
+                {st.llmBaseUrl && st.llmModel ? '已配置' : '未配置'}
+              </b>
+            </div>
+            <LlmCard
+              preset={st.llmPreset}
+              baseUrl={st.llmBaseUrl}
+              apiKey={st.llmApiKey}
+              model={st.llmModel}
+              prompt={st.llmPrompt}
+              saveDone={st.llmSaveDone}
+              onPresetChange={(v) => patch({ llmPreset: v })}
+              onBaseUrlChange={(v) => patch({ llmBaseUrl: v })}
+              onApiKeyChange={(v) => patch({ llmApiKey: v })}
+              onModelChange={(v) => patch({ llmModel: v })}
+              onPromptChange={(v) => patch({ llmPrompt: v })}
+              onSave={(pr, u, k, m, pt) => post('saveLlm', pr, u, k, m, pt)}
+            />
+          </section>
+        )}
       </div>
 
       <footer className="rv" style={{ ['--d' as string]: '200ms' }}>
         <span className={'dot' + (st.provider === 'baidu' ? ' b' : '')} />
-        <span>{st.provider === 'baidu' ? '百度翻译' : 'MyMemory'}</span>
+        <span>{PNAME[st.provider] ?? st.provider}</span>
         <span className="r">更改即时生效 · Esc 关闭</span>
       </footer>
     </div>

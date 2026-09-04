@@ -48,8 +48,10 @@
 | `captureHotkey` | `[]` | 开始捕获热键 | settings |
 | `applyHotkey` | `[]` | 应用捕获的热键（设置页，不关窗） | settings |
 | `setLang` | `["src"\|"tgt", "id"]` | 设置源/目标语言 | settings |
-| `setProvider` | `["mymemory"\|"baidu"]` | 切换提供商 | settings |
+| `setProvider` | `["mymemory"\|"baidu"\|"deepl"\|"llm"]` | 切换提供商（未配置的目标回 `provider_not_ready` 错误帧） | settings |
 | `saveBaidu` | `["appid", "secret"]` | 保存百度密钥并启用 | config / settings |
+| `saveDeepl` | `["key", "endpoint?"]` | **优化 4**：保存 DeepL Key（endpoint 空=默认免费端点）并启用 | settings |
+| `saveLlm` | `["preset", "baseUrl", "apiKey?", "model", "prompt?"]` | **优化 4**：保存 OpenAI-compatible 配置并启用（apiKey 空=本地服务；prompt 空=内置默认） | settings |
 | `openurl` | `["https://..."]` | 打开外链（仅允许 fanyi-api.baidu.com） | config |
 | `ui_event` | `["事件名"]` | **v1.1 React 页**：页面生命周期/诊断上报（如 `settings-rendered`）；收端（宿主）记诊断日志，未知事件名静默忽略；自动化断言锚点 | React 页 |
 
@@ -66,6 +68,8 @@
 | `hotkeyUpdated` | `{hk, keys:[]}` | 热键已应用 | capture / settings |
 | `providerUpdated` | `{provider}` | 提供商已切换 | settings |
 | `baiduSaved` | `{ok:true}` | 密钥已保存 | settings |
+| `deeplSaved` | `{ok:true}` | **优化 4**：DeepL Key 已保存 | settings |
+| `llmSaved` | `{ok:true}` | **优化 4**：LLM 配置已保存 | settings |
 
 **result 页 init payload**：
 ```json
@@ -78,9 +82,12 @@
 {"hotkey":"Ctrl+Alt+D", "hotkeyKeys":["Ctrl","Alt","D"],
  "src":"auto", "tgt":"zh-CN", "provider":"mymemory",
  "hasKeys":true, "appid":"...", "secret":"...", "ndrag":true,
+ "deeplKey":"...", "deeplEndpoint":"",
+ "llmPreset":"custom", "llmBaseUrl":"", "llmApiKey":"", "llmModel":"", "llmPrompt":"",
  "langs":[{"id":"auto","name":"自动检测","auto":true,"common":true},
           {"id":"zh-CN","name":"简体中文","common":true}, ...]}
 ```
+（deepl*/llm* 字段为优化 4 新增；页面按所选 provider 条件渲染配置卡）
 
 ## 4. 统一数据模型（阶段 3 起由 C# Translation Core 产出）
 
@@ -97,7 +104,7 @@
 
 UI 只消费此模型与 `{code, message}` 错误帧，**永不接触 Provider 原始 JSON**。
 
-**当前 error code 表**：`translate_failed` / `hotkey_invalid` / `no_capture` / `hotkey_busy` / `no_baidu_keys` / `save_failed`（`version_mismatch`/`bad_message`/`window_failed` 为 v1.4 前桥时代遗留码，页面仍按统一错误帧渲染）
+**当前 error code 表**：`translate_failed` / `hotkey_invalid` / `no_capture` / `hotkey_busy` / `no_baidu_keys` / `save_failed` / `provider_not_ready`（**优化 4**：切换到未配置的 deepl/llm 时；页面引导到对应配置卡）
 
 ## 5. 版本兼容
 
@@ -107,6 +114,7 @@ UI 只消费此模型与 `{code, message}` 错误帧，**永不接触 Provider �
 ## 6. 宿主行为要点（v1.4，桥时代章节已随 Named Pipe 删除）
 
 **宿主承接 translate**：自开 result 窗携带待译文本（SetPendingText）；页面 `translate` 到达时以暂存文本 + 当前配置（ConfigStore 现读）调用 Translator.Core，`result`/`error` 帧按 requestId 配对推回页面。取消源：窗口关闭 / 重试（新请求取消旧请求）/ 宿主退出。
+**韧性策略（优化 2，2026-09-03）**：Core 组合层在宿主无感的前提下执行——同语言对+文本 5min 内结果缓存直出（elapsedMs=0）；主 Provider 网络类瞬时错误指数退避重试（≤3 次，500/1000ms）；主失败自动降级备用 Provider（MyMemory↔百度互备）；`result.provider` 反映实际成功方。`error.code` 恒为 `translate_failed`，message 已按 429/超时/鉴权分类为可读文案。
 
 **宿主→页面推送（双通道）**：`PostWebMessageAsJson`（React 页 webui/src/bridge/protocol.ts 的主通道）+ `ExecuteScriptAsync window.__recv(...)` 注入。`NavigationCompleted` 前到达的推送入队，完成后按序放行（WebView2 就绪竞态防护，阶段 4a 引入）。
 

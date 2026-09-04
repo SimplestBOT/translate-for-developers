@@ -20,8 +20,9 @@
   扫描光束加载条、骨架屏、键帽弹簧动效；翻译改为**异步**，窗口秒开、动画不卡顿
 - **源语言自动检测**（也可手动指定），**目标语言 30+ 种**（中英日韩法德西俄…）
 - 剪贴板自动备份/恢复，**不破坏**你复制的内容
-- 翻译服务可选：**MyMemory**（免费、无需注册）/ **百度翻译**（免费版、质量更好）
+- 翻译服务可选：**MyMemory**（免费、无需注册）/ **百度翻译** / **DeepL** / **AI 大模型**（OpenAI 兼容：OpenAI/DeepSeek/Kimi/智谱/Ollama/自定义）
 - 长文本自动分片，突破百度单次 6000 字节限制
+- LLM 翻译自动保护代码/路径/URL/标识符（占位符机制，恢复失败不静默）
 - 交互细节：标题栏可拖动、`Esc` 关闭、`Enter` 复制译文、复制按钮变绿打勾、
   右下角 Toast 通知（替代生硬的 MsgBox）
 - 托盘菜单：**改热键（直接在键盘上按）**、**切换翻译服务**、选语言、退出
@@ -42,12 +43,21 @@
 hotkey=^!d              ; 翻译热键（托盘菜单可改）
 src_lang=auto           ; 源语言：auto=自动检测，或 zh-CN/en/ja/ko/…
 tgt_lang=zh-CN          ; 目标语言（默认简体中文）
-provider=mymemory       ; mymemory 或 baidu
+provider=mymemory       ; mymemory / baidu / deepl / llm
 baidu_appid=            ; 百度翻译 APP ID（选百度时填）
 baidu_secret=           ; 百度翻译密钥（选百度时填）
+deepl_key=              ; DeepL API Key（选 DeepL 时填）
+deepl_endpoint=         ; 可选，Pro 端点；留空用免费端点
+llm_preset=             ; AI 大模型预设：openai/deepseek/kimi/zhipu/ollama/custom
+llm_base_url=           ; OpenAI 兼容 Base URL（如 https://api.deepseek.com/v1）
+llm_api_key=            ; API Key（本地 Ollama 可留空）
+llm_model=              ; 模型名（如 gpt-4o-mini / deepseek-chat）
+llm_prompt=             ; 可选，翻译 Prompt；留空用内置默认
 ```
 
 > 托盘菜单改热键/切换服务后会自动写入此文件，无需手动编辑。
+
+> **密钥安全**：百度 APP ID / 密钥落盘时经 Windows **DPAPI** 加密（`dpapi:` 前缀密文，仅本机当前 Windows 账户可解密）；拷贝 `config.conf` 到其他机器无法读出密钥。旧版明文文件在首次启动时自动迁移为密文。诊断日志不记录密钥内容；`config.conf` 已在 `.gitignore` 中排除，请勿手动提交。
 
 ## 支持的语言
 
@@ -86,9 +96,17 @@ baidu_secret=           ; 百度翻译密钥（选百度时填）
 |---|---|---|---|
 | MyMemory | 免费 | 无需 | 每日约 5 万字符额度，响应约 1 秒 |
 | 百度翻译 | 免费 | 需要 | 质量更稳，长文本分片支持 |
+| DeepL | 免费额度 50 万字符/月 | 需要 | 高质量，30+ 语言，支持 Pro 端点 |
+| AI 大模型 | 按服务商 | 视服务商 | OpenAI 兼容接口；内置 DeepSeek/Kimi/智谱/Ollama 预设；**开发者内容保护**（代码/路径/URL 不翻译） |
 
 **开通百度免费版**：fanyi-api.baidu.com → 登录 → 管理控制台 → 创建应用（通用文本翻译/标准版）
 → 复制 APP ID 和密钥 → 托盘菜单「切换服务」→ 百度 → 填入密钥。
+
+**DeepL**：www.deepl.com → 注册 API（免费版）→ 复制 Auth Key → 设置页选 DeepL 填入。
+
+**AI 大模型**：设置页选「AI 大模型」→ 选预设（或自定义）→ 填 Base URL / Model / API Key
+→ 保存即启用。任意 OpenAI 兼容服务均可接入；本地 Ollama 无需 Key。
+LLM 翻译自动保护代码块/函数名/路径/URL 等开发者内容不被翻译。
 
 ## 从源码构建
 

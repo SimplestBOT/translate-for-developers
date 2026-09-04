@@ -110,3 +110,8 @@ footer{flex:none;display:flex;align-items:center;padding-top:8px;font-family:var
 footer .dot{width:6px;height:6px;border-radius:50%;background:var(--acc);box-shadow:0 0 9px rgba(232,176,75,.7);margin-right:6px}
 footer .dot.b{background:#66b8ff;box-shadow:0 0 9px rgba(102,184,255,.7)}
 footer .r{margin-left:auto}
+
+/* 优化 4：LLM/DeepL 配置卡（select/textarea 对齐 input 视觉） */
+select{width:100%;margin-top:5px;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:9px;padding:8px 10px;color:var(--text);font:13px var(--sans);outline:none;cursor:pointer}
+textarea{width:100%;margin-top:5px;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:9px;padding:8px 12px;color:var(--text);font:12.5px/1.5 var(--sans);outline:none;resize:vertical;user-select:text;font-family:inherit}
+select:focus,textarea:focus{border-color:rgba(232,176,75,.55)}

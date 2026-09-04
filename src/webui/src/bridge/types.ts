@@ -7,9 +7,9 @@ export interface LangInfo {
   common?: boolean
 }
 
-export type ProviderId = 'mymemory' | 'baidu'
+export type ProviderId = 'mymemory' | 'baidu' | 'deepl' | 'llm'
 
-/** settings 页 init 载荷（AHK SettingsInitJson） */
+/** settings 页 init 载荷（优化 4：新增 deepl/llm 配置字段） */
 export interface SettingsInit {
   hotkey: string
   hotkeyKeys: string[]
@@ -19,6 +19,13 @@ export interface SettingsInit {
   hasKeys: boolean
   appid: string
   secret: string
+  deeplKey: string
+  deeplEndpoint: string
+  llmPreset: string
+  llmBaseUrl: string
+  llmApiKey: string
+  llmModel: string
+  llmPrompt: string
   ndrag: boolean
   langs: LangInfo[]
 }
@@ -42,6 +49,16 @@ export interface ProviderUpdated {
 
 /** baiduSaved 载荷 */
 export interface BaiduSaved {
+  ok: boolean
+}
+
+/** deeplSaved 载荷（优化 4） */
+export interface DeeplSaved {
+  ok: boolean
+}
+
+/** llmSaved 载荷（优化 4） */
+export interface LlmSaved {
   ok: boolean
 }
 

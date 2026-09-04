@@ -4,10 +4,15 @@ $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot                             # E:\translator\csharp
 $proj = Join-Path $root "TranslatorHost\TranslatorHost.csproj"
 $out  = Join-Path $root "TranslatorHost\bin\Release\net48\win-x64"
+# P1：UIA 选区直读隔离子进程（无 RID，普通 net48 输出）
+$uiaProj = Join-Path $root "TranslatorUia\TranslatorUia.csproj"
+$uiaOut  = Join-Path $root "TranslatorUia\bin\Release\net48"
 $dest = Join-Path (Split-Path -Parent $root) "scripts\bridge"
 
 dotnet build $proj -c Release -v minimal
 if ($LASTEXITCODE -ne 0) { throw "dotnet build 失败" }
+dotnet build $uiaProj -c Release -v minimal
+if ($LASTEXITCODE -ne 0) { throw "dotnet build 失败（translator-uia）" }
 
 # 部署前检测宿主是否在运行（在跑则文件被锁，部署会半途失败留下混版本产物）
 $exe = Join-Path $dest "translator-ui.exe"
@@ -24,6 +29,7 @@ if ($deploy) {
     if (Test-Path (Join-Path $out "runtimes\win-x64\native")) {
         Copy-Item (Join-Path $out "runtimes\win-x64\native\*") $dest -Force
     }
+    Copy-Item (Join-Path $uiaOut "translator-uia.exe") $dest -Force
     Write-Host "bridge 已部署 -> $dest"
     Get-ChildItem $dest | ForEach-Object { Write-Host ("  " + $_.Name) }
 }

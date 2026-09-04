@@ -2,8 +2,9 @@
 // Standalone.cs - 宿主独立运行（阶段 5b；阶段 6 起为唯一模式）
 // TrayController：托盘图标/菜单（语言、提供商、入口、退出）+ 全局翻译热键
 //   （RegisterHotKey + WM_HOTKEY，AHK 串解析）+ 气泡提示。
-// SelectionCapture：选中捕获（剪贴板全格式备份 → Ctrl+C → 轮询等待 →
-//   读文本 → 恢复剪贴板）。
+// SelectionCapture：选中捕获（剪贴板全格式备份 → 注入复制键 → 轮询等待 →
+//   读文本 → 恢复剪贴板）；终端类前台（TerminalGuard 判定）只发 Ctrl+Insert，
+//   绝不注入 Ctrl+C（终端里 Ctrl+C=SIGINT，误杀运行中的任务）。
 // 线程模型：全部在 UI 线程（托盘/热键消息/菜单事件天然同线程）。
 //=============================================================
 using System;
@@ -13,6 +14,8 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 using Translator.Core.Configuration;
+using Translator.Core.Infrastructure;
+using Translator.Core.Providers;
 
 namespace TranslatorHost
 {
@@ -119,14 +122,15 @@ namespace TranslatorHost
         }
         private const uint INPUT_KEYBOARD = 1;
 
-        /// <summary>SendInput 批量注入（返回实际入队事件数；0=被系统拒绝）。</summary>
-        private static uint SendKey(ushort vk, bool up)
+        /// <summary>SendInput 注入（返回实际入队事件数；0=被系统拒绝）。
+        /// extended：扩展键标志（Insert 等必须带——缺省会被当作小键盘按键）。</summary>
+        private static uint SendKey(ushort vk, bool up, bool extended)
         {
             var inputs = new INPUT[1];
             inputs[0].type = INPUT_KEYBOARD;
             inputs[0].u.ki.wVk = vk;
             inputs[0].u.ki.wScan = (ushort)MapVirtualKey(vk, MAPVK_VK_TO_VSC);
-            inputs[0].u.ki.dwFlags = up ? KEYEVENTF_KEYUP : 0;
+            inputs[0].u.ki.dwFlags = (up ? KEYEVENTF_KEYUP : 0) | (extended ? KEYEVENTF_EXTENDEDKEY : 0);
             uint sent = SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
             if (sent == 0)
                 Program.LogHost("SendInput 被拒 vk=0x" + vk.ToString("X") + " err=" + Marshal.GetLastWin32Error());
@@ -192,8 +196,9 @@ namespace TranslatorHost
                 t.SetApartmentState(ApartmentState.STA);
                 t.Start();
                 // 剪贴板是共享资源：被其他进程长期锁定时 Clipboard 调用可能无限
-                // 阻塞——Join 上限 6s，超时放弃（残留线程随后自行结束，无副作用）
-                if (!t.Join(6000))
+                // 阻塞——Join 上限 8s，超时放弃（残留线程随后自行结束，无副作用）。
+                // 预算含 UIA 直读（2000ms 超时）+ 剪贴板尝试梯（~5.2s）
+                if (!t.Join(8000))
                 {
                     Program.LogHost("capture 超时放弃（STA 线程 6s 未返回，剪贴板被占用?）");
                     error = "捕获超时：剪贴板被其他程序占用";
@@ -252,23 +257,25 @@ namespace TranslatorHost
             Program.LogHost("inject state: ctrl=" + ((GetAsyncKeyState(0x11) & 0x8000) != 0)
                 + " alt=" + ((GetAsyncKeyState(0x12) & 0x8000) != 0)
                 + " shift=" + ((GetAsyncKeyState(0x10) & 0x8000) != 0));
-            SendKey(0x11, false);
+            SendKey(0x11, false, false);
             PumpWait(30);
-            SendKey(0x43, false);
+            SendKey(0x43, false, false);
             PumpWait(30);
-            SendKey(0x43, true);
-            SendKey(0x11, true);
+            SendKey(0x43, true, false);
+            SendKey(0x11, true, false);
         }
 
-        /// <summary>Ctrl+Insert：部分场景（终端/编辑器）比 Ctrl+C 更可靠。</summary>
+        /// <summary>Ctrl+Insert：终端安全复制键（不发 SIGINT）。Insert 必须
+        /// 带 EXTENDEDKEY——缺省会被当作小键盘 0，旧实现因此从未真正生效
+        /// （2026-09-03 修复；终端防护路径也依赖此函数）。</summary>
         private static void InjectCtrlInsert()
         {
-            SendKey(0x11, false);
+            SendKey(0x11, false, false);
             PumpWait(30);
-            SendKey(0x2D, false);
+            SendKey(0x2D, false, true);
             PumpWait(30);
-            SendKey(0x2D, true);
-            SendKey(0x11, true);
+            SendKey(0x2D, true, true);
+            SendKey(0x11, true, false);
         }
 
         private static string DescribeForeground()
@@ -303,15 +310,49 @@ namespace TranslatorHost
             catch (Exception) { return "目标应用"; }
         }
 
+        /// <summary>前台是否终端类宿主（分类规则见 TerminalGuard）。命中时
+        /// 捕获路径绝不注入 Ctrl+C——终端里它会成为 SIGINT 杀掉运行中的任务。</summary>
+        private static bool IsTerminalTarget(out string why)
+        {
+            why = null;
+            try
+            {
+                IntPtr hwnd = GetForegroundWindow();
+                if (hwnd == IntPtr.Zero) return false;
+                var cn = new System.Text.StringBuilder(256);
+                GetClassName(hwnd, cn, 256);
+                uint pid;
+                GetWindowThreadProcessId(hwnd, out pid);
+                string proc = null;
+                try { proc = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; }
+                catch (Exception) { }
+                return TerminalGuard.IsTerminal(cn.ToString(), proc, out why);
+            }
+            catch (Exception) { return false; }
+        }
+
         private static string CaptureCore(out string error)
         {
             error = null;
             object backup = null;
             try
             {
-                // 捕获目标诊断：前台窗口进程（UIPI/管理员目标一眼可辨）
+                // 捕获目标诊断：前台窗口进程（UIPI/管理员目标一眼可辨）+ 终端判定
+                string termWhy;
+                bool terminal = IsTerminalTarget(out termWhy);
                 Program.LogHost("capture target: " + DescribeForeground()
-                    + " focus: " + DescribeFocus());
+                    + " focus: " + DescribeFocus()
+                    + " terminal=" + (terminal ? termWhy : "no"));
+
+                // P1：UIA 选区直读（不注入按键、不动剪贴板）——成功即翻译，
+                // 剪贴板零污染；失败/无选区/超时一律无感落回下方剪贴板流程
+                //（终端目标同样优先 UIA，是 TerminalGuard 之外的第二层防误杀）。
+                // 缓存键=前台窗口 hwnd（负缓存：近期明确失败短期跳过 UIA）
+                long uiaTarget = GetForegroundWindow().ToInt64();
+                string uiaText, uiaWhy;
+                if (UiaSelectionProvider.TryReadSelection(uiaTarget, out uiaText, out uiaWhy))
+                    return uiaText;
+
                 uint seq0 = GetClipboardSequenceNumber();
                 try { backup = CloneClipboard(); } catch (Exception) { backup = null; }
                 try { Clipboard.Clear(); } catch (Exception) { }
@@ -323,22 +364,27 @@ namespace TranslatorHost
 
                 // 热键弦后的短窗口内 RIT 会吞掉注入按键（2026-09-02 实测：同注入
                 // 无热键时正常、弦后全灭）——用递增延迟的尝试梯子探测吞键窗口：
-                // 0ms/500ms/1300ms/2800ms，前三发 Ctrl+C，末发 Ctrl+Ins。
+                // 0ms/500ms/1300ms/2800ms。普通目标前三发 Ctrl+C、末发 Ctrl+Ins；
+                // 终端目标全程只发 Ctrl+Ins（Ctrl+C 在终端=SIGINT 误杀运行任务）。
                 int[] delays = { 0, 500, 1300, 2800 };
                 string text = null;
                 for (int i = 0; i < delays.Length && text == null; i++)
                 {
                     if (delays[i] > 0) PumpWait(delays[i] - delays[i - 1]);
+                    bool ctrlC = !terminal && i < delays.Length - 1;
                     Program.LogHost("capture attempt " + (i + 1) + " (+" + delays[i]
-                        + "ms, seq=" + GetClipboardSequenceNumber() + "): "
+                        + "ms, " + (ctrlC ? "ctrl+c" : "ctrl+ins")
+                        + ", seq=" + GetClipboardSequenceNumber() + "): "
                         + DescribeForeground());
-                    if (i < delays.Length - 1) InjectCopy(); else InjectCtrlInsert();
+                    if (ctrlC) InjectCopy(); else InjectCtrlInsert();
                     text = PollClipboardText(600);
                 }
                 if (string.IsNullOrEmpty(text))
                 {
                     Program.LogHost("capture diag: seqStart=" + seqStart + " -> " + GetClipboardSequenceNumber());
-                    error = "未能获取选中文本（" + TargetProc() + " 未响应复制）";
+                    error = terminal
+                        ? "终端窗口（" + TargetProc() + "）：已改用 Ctrl+Insert 仍未取到选中文本；为避免 Ctrl+C 误中断运行中的任务，未注入 Ctrl+C"
+                        : "未能获取选中文本（" + TargetProc() + " 未响应复制）";
                     RestoreClipboard(backup);
                     return null;
                 }
@@ -579,8 +625,8 @@ namespace TranslatorHost
                 };
                 _menu.Items.Add(hk);
 
-                // 翻译提供商：整行点击 = 切换（AHK ToggleProvider 语义）
-                var prov = new ToolStripMenuItem("翻译提供商：" + (cfg.Provider == "baidu" ? "百度翻译" : "MyMemory"));
+                // 翻译提供商：整行点击 = 切换（ToggleProvider 语义：已配置项循环）
+                var prov = new ToolStripMenuItem("翻译提供商：" + ProviderCatalog.DisplayName(cfg.Provider));
                 prov.Click += delegate { _owner._deps.ToggleProvider(); };
                 _menu.Items.Add(prov);
 

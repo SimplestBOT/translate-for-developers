@@ -83,8 +83,10 @@ footer{display:flex;align-items:center;gap:9px;margin-top:auto;padding-top:9px;f
 .xbtn.gear.on,.xbtn.gear:hover{background:var(--accdim);color:var(--acc)}
 @keyframes spin1{to{transform:rotate(90deg)}}
 .xbtn.gear.on{transform:rotate(90deg)}
-/* .spov portal 到 body：fixed 定位脱离 header 层叠上下文（transform 陷阱） */
-.spov{position:fixed;top:52px;right:18px;width:300px;z-index:40;background:#121724;border:1px solid var(--line2);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.6);padding:12px 13px;animation:ddin .18s var(--ease)}
+/* .spov portal 到 body：fixed 定位脱离 header 层叠上下文（transform 陷阱）。
+   max-height+overflow：v1.6 Provider 4 卡后内容超出结果窗高，body overflow
+   hidden 会裁掉底部（实测 2026-09-03）——面板自身滚动 */
+.spov{position:fixed;top:52px;right:18px;width:300px;max-height:calc(100vh - 110px);overflow-y:auto;z-index:40;background:#121724;border:1px solid var(--line2);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.6);padding:12px 13px;animation:ddin .18s var(--ease)}
 @keyframes ddin{from{opacity:0;transform:translateY(-6px) scale(.98)}}
 .spov-gap{margin-top:12px}
 .spov .flabel{margin-bottom:2px}
