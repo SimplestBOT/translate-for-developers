@@ -69,7 +69,7 @@ jobs:
         run: |
           Get-ChildItem release-pkg/*.zip | ForEach-Object {
             $h = (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower()
-            Add-Content $env:GITHUB_STEP_SUMMARY ("`"{0}`" sha256: `{1}`" -f $_.Name, $h)
+            Add-Content $env:GITHUB_STEP_SUMMARY ('sha256(' + $_.Name + ') = ' + $h)
           }
 
       - name: Create GitHub Release
