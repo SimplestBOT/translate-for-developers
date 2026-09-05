@@ -1,0 +1,27 @@
+{
+    "version": "1.7.0",
+    "description": "面向开发者的划词翻译：任意软件选中文本即译，支持截图 OCR 与输入翻译",
+    "homepage": "https://github.com/SimplestBOT/translate-for-developers",
+    "license": "MIT",
+    "notes": "双击 start-translator.bat 启动，托盘图标右键退出。默认热键：Ctrl+Alt+T 划词 / Ctrl+Alt+Z 截图翻译 / Ctrl+Alt+I 输入翻译（可在 scripts\\config.conf 修改）。",
+    "url": "https://github.com/SimplestBOT/translate-for-developers/releases/download/v1.7.0/translate-for-developers-v1.7.0-portable.zip",
+    "hash": "SHA256_PLACEHOLDER_FILL_ON_RELEASE",
+    "bin": [
+        [
+            "scripts\\bridge\\translator-ui.exe",
+            "translator"
+        ]
+    ],
+    "shortcuts": [
+        [
+            "start-translator.bat",
+            "translate-for-developers",
+            "",
+            "icon.ico"
+        ]
+    ],
+    "checkver": "github",
+    "autoupdate": {
+        "url": "https://github.com/SimplestBOT/translate-for-developers/releases/download/v$version/translate-for-developers-v$version-portable.zip"
+    }
+}

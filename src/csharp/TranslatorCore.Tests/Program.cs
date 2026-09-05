@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Translator.Core.Configuration;
 using Translator.Core.Infrastructure;
+using Translator.Core.Ocr;
 using Translator.Core.Providers;
 using Translator.Core.Translation;
 
@@ -28,6 +29,8 @@ namespace Translator.Core.Tests
             ServiceTests.Register();
             TerminalGuardTests.Register();
             UiaTextTests.Register();
+            OcrTextTests.Register();
+            InputHotkeyTests.Register();
             ResilienceTests.Register();
             SecretProtectionTests.Register();
             NewProviderTests.Register();
@@ -93,6 +96,101 @@ namespace Translator.Core.Tests
 
         private static List<string> List(params string[] items) { return new List<string>(items); }
         private static List<string> List(List<string> src) { return src; }
+
+        // ------------------------------------------------------------
+        // 优化 5：截图 OCR —— OcrText 纯函数（语言匹配/尺寸适配/行拼装）
+        // ------------------------------------------------------------
+        private static class OcrTextTests
+        {
+            public static void Register()
+            {
+                Section("OcrPickLanguage", delegate
+                {
+                    Eq("en-US", OcrText.PickLanguage("en", List("en-US", "zh-Hans-CN"), "zh-Hans-CN"), "en→en-US");
+                    Eq("zh-Hans-CN", OcrText.PickLanguage("zh-CN", List("en-US", "zh-Hans-CN"), "en-US"), "zh-CN→zh-hans 族");
+                    Eq("zh-Hans-CN", OcrText.PickLanguage("zh-TW", List("zh-Hans-CN"), "zh-Hans-CN"), "zh-TW 缺 hant → 任何 zh 兜底");
+                    Eq("ja-JP", OcrText.PickLanguage("ja", List("en-US", "ja-JP"), "en-US"), "ja→ja-JP");
+                    Eq("en-US", OcrText.PickLanguage("auto", List("en-US", "zh-Hans-CN"), "en-US"), "auto→profile");
+                    Eq("en-US", OcrText.PickLanguage(null, List("en-US"), "en-US"), "null src→profile");
+                    Eq("en-US", OcrText.PickLanguage("en", List("en-US", "en-GB"), "zh-Hans-CN"), "同族取首个");
+                    Eq("en-GB", OcrText.PickLanguage("en-US", List("en-GB", "zh-Hans-CN"), "zh-Hans-CN"), "主标签前缀近亲匹配");
+                    Eq("en-US", OcrText.PickLanguage("fr", List("en-US", "zh-Hans-CN"), "en-US"), "无匹配→profile 兜底");
+                    True(OcrText.PickLanguage("fr", List("en-US"), null) != null, "无匹配且无 profile→可用列表首个");
+                    Eq(null, OcrText.PickLanguage("en", List(new string[0]), "en-US"), "可用列表空→null（报未装语言包）");
+                    Eq("en-us", OcrText.PickLanguage("EN", List("en-us"), "zh-Hans-CN"), "大小写无关（返回可用列表原样）");
+                });
+
+                Section("OcrFitDimension", delegate
+                {
+                    int w, h;
+                    OcrText.FitDimension(800, 500, 10000, out w, out h);
+                    True(w == 800 && h == 500, "不超限原样");
+                    OcrText.FitDimension(12000, 6000, 10000, out w, out h);
+                    True(w == 10000 && h == 5000, "宽超等比");
+                    OcrText.FitDimension(5000, 20000, 10000, out w, out h);
+                    True(w == 2500 && h == 10000, "高超等比");
+                    OcrText.FitDimension(20000, 20000, 10000, out w, out h);
+                    True(w == 10000 && h == 10000, "双超等比");
+                    OcrText.FitDimension(0, 0, 10000, out w, out h);
+                    True(w == 0 && h == 0, "非法尺寸安全");
+                });
+
+                Section("OcrJoinLines", delegate
+                {
+                    Eq("a\r\nb", OcrText.JoinLines(List("a", "b")), "两行 CRLF 拼接");
+                    Eq("a", OcrText.JoinLines(List("a  ")), "行尾空白剥离");
+                    Eq("a\r\nb", OcrText.JoinLines(List("a", null, "b")), "null 行跳过");
+                    Eq("", OcrText.JoinLines(List(new string[0])), "空列表→空串");
+                    Eq("", OcrText.JoinLines(null), "null→空串");
+                });
+
+                Section("OcrPreprocess", delegate
+                {
+                    True(OcrText.ShouldInvert(80), "暗背景（80）→ 反色");
+                    False(OcrText.ShouldInvert(128), "边界 128 不反色");
+                    False(OcrText.ShouldInvert(200), "亮背景不反色");
+                    False(OcrText.ShouldInvert(-1), "抽样失败（-1）不反色");
+                    True(OcrText.ShouldUpscale(800, 120), "矮条（h=120）→ 2x");
+                    True(OcrText.ShouldUpscale(300, 50), "字幕条 → 2x");
+                    False(OcrText.ShouldUpscale(800, 160), "边界 h=160 不放大");
+                    False(OcrText.ShouldUpscale(800, 500), "正常区域不放大");
+                });
+            }
+        }
+
+        // ------------------------------------------------------------
+        // 优化 6：输入翻译 —— input_hotkey 配置（15 键往返 + 缺省值）
+        // ------------------------------------------------------------
+        private static class InputHotkeyTests
+        {
+            public static void Register()
+            {
+                Section("InputHotkeyConfig", delegate
+                {
+                    string path = Path.Combine(Path.GetTempPath(), "tfd-test-" + Guid.NewGuid().ToString("N") + ".conf");
+                    try
+                    {
+                        var store = new ConfigStore(path);
+                        Eq("^!i", store.Current.InputHotkey, "缺省 input_hotkey=^!i");
+                        Eq("^!z", store.Current.ShotHotkey, "缺省 shot_hotkey=^!z");
+
+                        var cfg = store.Current;
+                        cfg.InputHotkey = "^!k";
+                        cfg.ShotHotkey = "^!q";
+                        True(store.WriteSync(cfg), "写盘成功");
+                        var back = new ConfigStore(path);
+                        Eq("^!k", back.Current.InputHotkey, "input_hotkey 往返");
+                        Eq("^!q", back.Current.ShotHotkey, "shot_hotkey 往返");
+                        Eq("mymemory", back.Current.Provider, "既有键不受新键影响");
+                        True(File.ReadAllText(path).Contains("input_hotkey=^!k"), "input_hotkey 落盘");
+                    }
+                    finally
+                    {
+                        try { File.Delete(path); } catch (Exception) { }
+                    }
+                });
+            }
+        }
 
         private static class Md5Tests
         {

@@ -13,6 +13,7 @@ using System.IO;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Translator.Core.Configuration;
+using Translator.Core.Ocr;
 
 namespace TranslatorHost
 {
@@ -84,6 +85,30 @@ namespace TranslatorHost
             {
                 GetConfig = () => _business.CurrentConfig,
                 TranslateSelection = delegate { OpenResultFromSelection(); },
+                TranslateShot = delegate
+                {
+                    ShotController.Start(
+                        () => _business.CurrentConfig,
+                        OpenResultWithText,
+                        text => _tray.Balloon("translator", text),
+                        LogHost,
+                        action => _marshaller.BeginInvoke(action),
+                        false);
+                },
+                TranslateInput = delegate
+                {
+                    // 已有 input 窗 → 激活（保留输入/译文状态）；否则开新窗
+                    int exist = _business.FindReusableInputWindow();
+                    MainWindow w = null;
+                    if (exist != 0) Windows.TryGetValue(exist, out w);
+                    if (w != null && !w.IsDisposed)
+                    {
+                        LogHost("input 窗已存在，激活 winId=" + exist);
+                        try { w.Activate(); } catch (Exception) { }
+                        return;
+                    }
+                    OpenSelfWindow("input", null);
+                },
                 OpenSettings = delegate { OpenSelfWindow("settings", null); },
                 OpenCapture = delegate { OpenSelfWindow("capture", null); },
                 OpenConfigPage = delegate { OpenSelfWindow("config", null); },
@@ -142,8 +167,13 @@ namespace TranslatorHost
                     if (_tray.EnterStandalone())
                     {
                         LogHost("standalone 启动（托盘+热键）");
-                        _tray.Balloon("translator", "已就绪 · " +
-                            CaptureManager.FormatHotkey(_business.CurrentConfig.Hotkey) + " 划词翻译");
+                        _tray.Balloon("translator", "已就绪 · "
+                            + CaptureManager.FormatHotkey(_business.CurrentConfig.Hotkey)
+                            + " 划词 · "
+                            + CaptureManager.FormatHotkey(_business.CurrentConfig.ShotHotkey)
+                            + " 截图 · "
+                            + CaptureManager.FormatHotkey(_business.CurrentConfig.InputHotkey)
+                            + " 输入翻译");
                     }
                     else
                     {
@@ -157,8 +187,35 @@ namespace TranslatorHost
             // 生命周期：宿主常驻独立运行；用户经托盘「退出」结束进程（Application.Exit）。
             // TFD_TEST_REUSE=1（调试）：开结果窗后 9s 驱动一次复用流程——
             // 绕过注入/热键直接验证「同窗换文本重翻」全链路（沙箱自动化用）。
-            // TFD_TEST_REUSE=1（调试）：开结果窗后 9s 驱动一次复用流程——
-            // 绕过注入/热键直接验证「同窗换文本重翻」全链路（沙箱自动化用）。
+            // TFD_TEST_SHOT=1（调试）：3s 后自动以主屏中央 800×500 跑
+            // 截图→OCR→开窗全链路（跳过遮罩交互），开窗 8s 后自动退出。
+            if (Environment.GetEnvironmentVariable("TFD_TEST_SHOT") == "1")
+            {
+                _marshaller.BeginInvoke(new Action(delegate
+                {
+                    var t = new Timer { Interval = 3000 };
+                    t.Tick += delegate
+                    {
+                        t.Stop();
+                        ShotController.Start(
+                            () => _business.CurrentConfig,
+                            OpenResultWithText,
+                            text => LogHost("balloon: " + text),
+                            LogHost,
+                            action => _marshaller.BeginInvoke(action),
+                            true);
+                        var close = new Timer { Interval = 8000 };
+                        close.Tick += delegate
+                        {
+                            close.Stop();
+                            LogHost("TEST shot done, exit");
+                            Application.Exit();
+                        };
+                        close.Start();
+                    };
+                    t.Start();
+                }));
+            }
             if (Environment.GetEnvironmentVariable("TFD_TEST_REUSE") == "1")
             {
                 _marshaller.BeginInvoke(new Action(delegate
@@ -204,16 +261,22 @@ namespace TranslatorHost
                         _tray.Balloon("translator", err ?? "未能获取选中文本");
                         return;
                     }
-                    // 遗留优化：已有未关闭的结果窗 → 同窗刷新（换文本重推 init + 置前）
-                    int reuse = _business.FindReusableResultWindow();
-                    if (reuse != 0)
-                    {
-                        _business.ReuseResultWindow(reuse, text);
-                        return;
-                    }
-                    OpenSelfWindow("result", text);
+                    OpenResultWithText(text);
                 }));
             });
+        }
+
+        /// <summary>文本落地结果窗（划词捕获与截图 OCR 共用）：已有未关闭的
+        /// 结果窗 → 同窗刷新（换文本重推 init + 置前），否则开新窗。</summary>
+        private static void OpenResultWithText(string text)
+        {
+            int reuse = _business.FindReusableResultWindow();
+            if (reuse != 0)
+            {
+                _business.ReuseResultWindow(reuse, text);
+                return;
+            }
+            OpenSelfWindow("result", text);
         }
 
         /// <summary>宿主自开窗：磁盘 HTML（webui\dist 优先，回退 AHK html 目录/内嵌解包）。</summary>
@@ -252,6 +315,7 @@ namespace TranslatorHost
                 switch (page)
                 {
                     case "result": title = "翻译结果 - translator"; w = 590; h = 540; pos = 2; break;
+                    case "input": title = "输入翻译 - translator"; w = 590; h = 620; break;
                     case "capture": title = "更改翻译热键 - translator"; w = 440; h = 330; break;
                     case "config": title = "配置百度翻译 - translator"; w = 490; h = 470; break;
                     case "settings": title = "设置 - translator"; w = 480; h = 620; break;
@@ -259,8 +323,8 @@ namespace TranslatorHost
                 var win = new MainWindow(winId, title, w, h, page);
                 Windows[winId] = win;
                 _business.RegisterSelfWindow(winId, page);
-                if (page == "result" && !string.IsNullOrEmpty(text))
-                    _business.SetPendingText(winId, text);
+                if ((page == "result" || page == "input") && !string.IsNullOrEmpty(text))
+                    _business.SetPendingText(winId, text);   // result=待译原文；input=预填文本（init.preText）
                 if (_openMode) _openWinId = winId;
 
                 win.PageEvent += (id, envJson) =>
@@ -324,9 +388,13 @@ namespace TranslatorHost
         {
             try
             {
-                // WebView2 运行时探测（不弹 UI）
-                var ver = CoreWebView2Environment.GetAvailableBrowserVersionString();
-                Console.WriteLine("webview2=" + ver);
+                // WebView2 运行时探测（环境注记，不弹 UI）。软探测：缺失只注记
+                // 不判 FAIL——CI runner 无 WebView2 属正常环境事实（v1.7 起；
+                // PASS/FAIL 主体=下方配置读写冒烟）。本机正常路径仍输出版本。
+                string ver = null;
+                try { ver = CoreWebView2Environment.GetAvailableBrowserVersionString(); }
+                catch (Exception) { }
+                Console.WriteLine("webview2=" + (ver ?? "not-found（无 WebView2 的环境，如 CI runner）"));
 
                 // 阶段 3：Core 配置读写冒烟（目标环境文件 I/O 校验）
                 string tmp = Path.Combine(Path.GetTempPath(),
@@ -362,6 +430,10 @@ namespace TranslatorHost
                     Console.WriteLine("uia-provider-2nd=" + (hit2 ? "hit" : "miss(" + w2 + ")"));
                 }
 
+                // 优化 5：OCR 引擎能力注记（环境事实，不计 PASS/FAIL——无语言包
+                // 时截图翻译降级报错，但宿主其余功能不受影响）
+                Console.WriteLine("ocr-engine=" + OcrService.Probe());
+
                 Console.WriteLine("SELFTEST PASS");
                 return 0;
             }
@@ -371,7 +443,6 @@ namespace TranslatorHost
                 return 1;
             }
         }
-
         /// <summary>宿主侧诊断日志（%TEMP%\tfd_host_err.log；不记录密钥与正文内容）</summary>
         public static void LogHost(string msg)
         {

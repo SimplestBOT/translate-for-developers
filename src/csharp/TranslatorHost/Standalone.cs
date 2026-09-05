@@ -459,6 +459,8 @@ namespace TranslatorHost
         {
             public Func<AppConfig> GetConfig;
             public Action TranslateSelection;               // 全局热键触发
+            public Action TranslateShot;                    // 截图翻译热键/菜单（优化 5）
+            public Action TranslateInput;                   // 输入翻译热键/菜单（优化 6）
             public Action OpenSettings, OpenCapture, OpenConfigPage;
             public Action ToggleProvider;                    // 提供商行点击（AHK ToggleProvider 语义）
             public Action<string> SetSourceLang;             // 子菜单选择
@@ -469,23 +471,97 @@ namespace TranslatorHost
 
         private const int WM_HOTKEY = 0x0312;
         private const int HOTKEY_ID = 0xB00B;
+        private const int HOTKEY_ID_SHOT = 0xB00C;   // 截图翻译热键（优化 5）
+        private const int HOTKEY_ID_INPUT = 0xB00D;  // 输入翻译热键（优化 6）
 
         private readonly Deps _deps;
         private TrayForm _form;          // 隐藏窗体：NotifyIcon 宿主 + WM_HOTKEY 接收
         private uint _hkMods, _hkVk;     // 当前已注册的翻译热键
         private string _registeredHk;
+        private string _shotRegisteredHk;
+        private string _inputRegisteredHk;
 
         public TrayController(Deps deps) { _deps = deps; }
 
         public bool Headless { get; set; }
 
-        /// <summary>进入独立模式：显示托盘 + 注册翻译热键。返回热键是否注册成功。</summary>
+        /// <summary>进入独立模式：显示托盘 + 注册翻译热键 + 截图热键 + 输入热键。
+        /// 返回翻译热键是否注册成功（截图/输入热键失败仅降级：托盘菜单仍可用）。</summary>
         public bool EnterStandalone()
         {
             if (Headless) return false;
             EnsureForm();
             _form.VisibleTray = true;
-            return RegisterTranslateHotkey(_deps.GetConfig().Hotkey);
+            bool ok = RegisterTranslateHotkey(_deps.GetConfig().Hotkey);
+            string shot = _deps.GetConfig().ShotHotkey;
+            if (!RegisterShotHotkey(shot))
+                _deps.Log("shot hotkey 未注册（托盘菜单入口仍可用）: " + shot);
+            string input = _deps.GetConfig().InputHotkey;
+            if (!RegisterInputHotkey(input))
+                _deps.Log("input hotkey 未注册（托盘菜单入口仍可用）: " + input);
+            return ok;
+        }
+
+        /// <summary>注册输入翻译热键（AHK 串如 "^!i"）。失败返回 false。</summary>
+        public bool RegisterInputHotkey(string hk)
+        {
+            UnregisterInputHotkey();
+            if (Headless || string.IsNullOrEmpty(hk) || _form == null)
+                return false;
+            uint mods, vk;
+            if (!ParseHotkey(hk, out mods, out vk))
+            {
+                _deps.Log("input hotkey 解析失败: " + hk);
+                return false;
+            }
+            if (!RegisterHotKey(_form.Handle, HOTKEY_ID_INPUT, mods | 0x4000, vk)) // MOD_NOREPEAT
+            {
+                _deps.Log("input hotkey 注册失败（被占用？）: " + hk + " err=" + Marshal.GetLastWin32Error());
+                return false;
+            }
+            _inputRegisteredHk = hk;
+            _deps.Log("input hotkey registered: " + hk);
+            return true;
+        }
+
+        public void UnregisterInputHotkey()
+        {
+            if (_form != null && _inputRegisteredHk != null)
+            {
+                UnregisterHotKey(_form.Handle, HOTKEY_ID_INPUT);
+                _inputRegisteredHk = null;
+            }
+        }
+
+        /// <summary>注册截图翻译热键（AHK 串如 "^!z"）。失败返回 false。</summary>
+        public bool RegisterShotHotkey(string hk)
+        {
+            UnregisterShotHotkey();
+            if (Headless || string.IsNullOrEmpty(hk) || _form == null)
+                return false;
+            uint mods, vk;
+            if (!ParseHotkey(hk, out mods, out vk))
+            {
+                _deps.Log("shot hotkey 解析失败: " + hk);
+                return false;
+            }
+            if (!RegisterHotKey(_form.Handle, HOTKEY_ID_SHOT, mods | 0x4000, vk)) // MOD_NOREPEAT
+            {
+                _deps.Log("shot hotkey 注册失败（被占用？）: " + hk + " err=" + Marshal.GetLastWin32Error());
+                return false;
+            }
+            _shotRegisteredHk = hk;
+            _deps.Log("shot hotkey registered: " + hk);
+            return true;
+        }
+
+        public void UnregisterShotHotkey()
+        {
+            if (_form != null && _shotRegisteredHk != null)
+            {
+                UnregisterHotKey(_form.Handle, HOTKEY_ID_SHOT);
+                _shotRegisteredHk = null;
+            }
         }
 
         /// <summary>注册翻译热键（AHK 串如 "^!d"）。失败返回 false（被占用/非法）。</summary>
@@ -634,6 +710,24 @@ namespace TranslatorHost
                 _menu.Items.Add(BuildLangMenu("源语言", cfg.SourceLang, true));
                 _menu.Items.Add(BuildLangMenu("目标语言", cfg.TargetLang, false));
 
+                // 截图翻译：动作项，标签带当前热键（发现性）
+                var shot = new ToolStripMenuItem("截图翻译（"
+                    + CaptureManager.FormatHotkey(cfg.ShotHotkey) + "）");
+                shot.Click += delegate
+                {
+                    if (_owner._deps.TranslateShot != null) _owner._deps.TranslateShot();
+                };
+                _menu.Items.Add(shot);
+
+                // 输入翻译：动作项（优化 6）
+                var input = new ToolStripMenuItem("输入翻译（"
+                    + CaptureManager.FormatHotkey(cfg.InputHotkey) + "）");
+                input.Click += delegate
+                {
+                    if (_owner._deps.TranslateInput != null) _owner._deps.TranslateInput();
+                };
+                _menu.Items.Add(input);
+
                 // 配置百度密钥…（AHK 菜单无此行，但 ToggleProvider 错误文案引用它——补齐更实用）
                 var config = new ToolStripMenuItem("配置百度密钥…");
                 config.Click += delegate { _owner._deps.OpenConfigPage(); };
@@ -671,6 +765,16 @@ namespace TranslatorHost
                 if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HOTKEY_ID)
                 {
                     _owner._deps.TranslateSelection();
+                    return;
+                }
+                if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HOTKEY_ID_SHOT)
+                {
+                    if (_owner._deps.TranslateShot != null) _owner._deps.TranslateShot();
+                    return;
+                }
+                if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HOTKEY_ID_INPUT)
+                {
+                    if (_owner._deps.TranslateInput != null) _owner._deps.TranslateInput();
                     return;
                 }
                 base.WndProc(ref m);
@@ -780,6 +884,8 @@ namespace TranslatorHost
         public void Dispose()
         {
             UnregisterTranslateHotkey();
+            UnregisterShotHotkey();
+            UnregisterInputHotkey();
             if (_form != null) { _form.Dispose(); _form = null; }
         }
 

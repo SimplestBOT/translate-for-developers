@@ -24,6 +24,8 @@ namespace Translator.Core.Configuration
     public sealed class AppConfig
     {
         public string Hotkey;        // AHK 原始串（^!t）
+        public string ShotHotkey;    // 截图翻译热键（优化 5；默认 ^!z——^!s 在大量截图工具中已被占用；文件级配置，UI 化为后续项）
+        public string InputHotkey;   // 输入翻译热键（优化 6；默认 ^!i；文件级配置）
         public string Provider;      // mymemory / baidu / deepl / llm
         public string SourceLang;    // 语言 ID（auto 合法）
         public string TargetLang;    // 语言 ID（auto 非法，写入前由 AHK/C# 各自校验）
@@ -78,6 +80,8 @@ namespace Translator.Core.Configuration
             var cfg = new AppConfig
             {
                 Hotkey = "^!t",
+                ShotHotkey = "^!z",
+                InputHotkey = "^!i",
                 Provider = "mymemory",
                 SourceLang = "auto",
                 TargetLang = "zh-CN",
@@ -107,6 +111,8 @@ namespace Translator.Core.Configuration
                     switch (key)
                     {
                         case "hotkey": if (val.Length > 0) cfg.Hotkey = val; break;
+                        case "shot_hotkey": if (val.Length > 0) cfg.ShotHotkey = val; break;
+                        case "input_hotkey": if (val.Length > 0) cfg.InputHotkey = val; break;
                         case "provider": if (val == "baidu" || val == "mymemory" || val == "deepl" || val == "llm") cfg.Provider = val; break;
                         case "src_lang": cfg.SourceLang = val; break;
                         case "tgt_lang": cfg.TargetLang = val; break;
@@ -179,6 +185,8 @@ namespace Translator.Core.Configuration
             // 密钥类值经 DPAPI 加密落盘（CurrentUser：仅本机当前账户可解）
             var sb = new StringBuilder();
             sb.Append("hotkey=").Append(cfg.Hotkey == null ? "" : cfg.Hotkey).Append('\n');
+            sb.Append("shot_hotkey=").Append(cfg.ShotHotkey == null ? "" : cfg.ShotHotkey).Append('\n');
+            sb.Append("input_hotkey=").Append(cfg.InputHotkey == null ? "" : cfg.InputHotkey).Append('\n');
             sb.Append("provider=").Append(cfg.Provider == null ? "" : cfg.Provider).Append('\n');
             sb.Append("src_lang=").Append(cfg.SourceLang == null ? "" : cfg.SourceLang).Append('\n');
             sb.Append("tgt_lang=").Append(cfg.TargetLang == null ? "" : cfg.TargetLang).Append('\n');

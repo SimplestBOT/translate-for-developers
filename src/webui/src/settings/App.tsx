@@ -214,7 +214,7 @@ export default function App() {
         <div className="logo">译</div>
         <div className="brand">translator · 设置</div>
         <div className="pair">
-          <span className="chip">v1.6</span>
+          <span className="chip">v1.7</span>
         </div>
         <button className="xbtn" title="关闭" onClick={() => post('close')}>
           ✕

@@ -1,11 +1,15 @@
 # Translate for Developers
 
+[![CI](https://github.com/SimplestBOT/translate-for-developers/actions/workflows/ci.yml/badge.svg)](https://github.com/SimplestBOT/translate-for-developers/actions/workflows/ci.yml)
+
+<p align="center"><img src="demo.gif" alt="划词 → 热键 → 译文 → 复制" width="590"></p>
+
 **简体中文** · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
 选中英文文本，按热键即弹出中文翻译。读代码注释、看英文文档、翻论文摘要——**任意软件里都能用**。
 
 在 MATLAB 里选中一段英文注释看不懂？VS Code 遇到英文报错？PDF 里卡壳？
-选中 → 按热键 → 译文立刻弹出。
+选中 → 按热键 → 译文立刻弹出。**报错截图、图片、视频字幕里选不中的文字？按截图热键框一下就能翻。**
 
 ## 为什么做这个工具
 
@@ -16,6 +20,10 @@
 ## 功能
 
 - 任意软件选中文本 → 按热键翻译（默认 `Ctrl+Alt+T`，可随时改）
+- **截图翻译（v1.6）**：报错截图、图片、视频字幕——选不中的文字都能翻。
+  按截图热键（默认 `Ctrl+Alt+Z`，托盘菜单也有入口）→ 拖拽框选区域 →
+  Windows 内置 OCR（免费、离线、零依赖）识别 → 自动翻译，走同一套结果窗
+- **输入翻译（v1.7）**：`Ctrl+Alt+I` 唤起多行输入框，`Enter` 翻译——查报错、写注释、起变量名的手动输入场景
 - **全新深色 UI（v1.1）**：基于系统自带 WebView2 渲染，玻璃质感卡片、入场级联动效、
   扫描光束加载条、骨架屏、键帽弹簧动效；翻译改为**异步**，窗口秒开、动画不卡顿
 - **源语言自动检测**（也可手动指定），**目标语言 30+ 种**（中英日韩法德西俄…）
@@ -33,7 +41,10 @@
 1. 运行 `start-translator.bat`（或直接运行 `src/bridge/translator-ui.exe`），托盘出现 T 字图标
 2. 在任意软件中**选中英文** → 按 **`Ctrl+Alt+T`** → 弹出译文窗口
 3. 译文窗口：拖顶部标题栏可移动；`Esc` 关闭；`Enter` 或「复制译文」复制
-4. 托盘图标（T 字）→ 右键菜单：改热键 / 切换服务 / 选语言 / 退出
+4. 托盘图标（T 字）→ 右键菜单：改热键 / 切换服务 / 选语言 / 截图翻译 / 输入翻译 / 退出
+5. **截图翻译**：按 `Ctrl+Alt+Z`（或托盘菜单「截图翻译」）→ 拖拽框选要翻译的区域 →
+   松手自动识别翻译；`Esc` 或右键取消
+6. **输入翻译**：按 `Ctrl+Alt+I`（或托盘菜单「输入翻译」）→ 多行输入 → `Enter` 翻译（`Shift+Enter` 换行）
 
 ## 配置
 
@@ -41,6 +52,8 @@
 
 ```ini
 hotkey=^!d              ; 翻译热键（托盘菜单可改）
+shot_hotkey=^!z         ; 截图翻译热键（编辑此文件后重启宿主生效）
+input_hotkey=^!i        ; 输入翻译热键（编辑此文件后重启宿主生效）
 src_lang=auto           ; 源语言：auto=自动检测，或 zh-CN/en/ja/ko/…
 tgt_lang=zh-CN          ; 目标语言（默认简体中文）
 provider=mymemory       ; mymemory / baidu / deepl / llm
@@ -55,7 +68,8 @@ llm_model=              ; 模型名（如 gpt-4o-mini / deepseek-chat）
 llm_prompt=             ; 可选，翻译 Prompt；留空用内置默认
 ```
 
-> 托盘菜单改热键/切换服务后会自动写入此文件，无需手动编辑。
+> 托盘菜单改热键/切换服务后会自动写入此文件，无需手动编辑。截图翻译热键
+> （`shot_hotkey`）暂为文件级配置：编辑后重启宿主生效。
 
 > **密钥安全**：百度 APP ID / 密钥落盘时经 Windows **DPAPI** 加密（`dpapi:` 前缀密文，仅本机当前 Windows 账户可解密）；拷贝 `config.conf` 到其他机器无法读出密钥。旧版明文文件在首次启动时自动迁移为密文。诊断日志不记录密钥内容；`config.conf` 已在 `.gitignore` 中排除，请勿手动提交。
 
@@ -120,6 +134,11 @@ dotnet build src/csharp/TranslatorHost/TranslatorHost.csproj -c Release
 `bridge/`（与 `start-translator.bat` 中路径一致）即可运行；前端页面
 （`src/webui/`，Vite + React 19 + TS）按页构建后产物 `webui/dist/<page>.html` 由宿主自动加载。
 
+**CI/CD（GitHub Actions）**：push/PR 自动跑 `dotnet build` + Core 测试 +
+WebUI 五页构建 + 宿主 selftest；打 `v*` tag 自动构建并把便携 zip 挂到
+GitHub Release（含 `translator-uia.exe`）。scoop / winget 安装见
+[`packaging/README.md`](packaging/README.md)。
+
 ### 开发调试参数
 
 ```
@@ -130,14 +149,15 @@ TFD_PIPE_NAME=<名>                      ; 实例互斥隔离键（并行测试�
 TFD_TEST_REUSE=1                        ; 自动驱动结果窗复用流程
 ```
 
-## 架构（v1.5，迁移收官）
+## 架构（v1.7，迁移收官）
 
 - **C# 宿主**（`src/csharp/TranslatorHost`，net48 + WinForms + WebView2）：唯一宿主——
-  托盘、全局热键、划词捕获（Ctrl+C 注入）、窗口生命周期、WebView2、DWM 圆角、原生拖动。
+  托盘、全局热键（划词 + 截图翻译）、划词捕获（终端防护、UIA 选区直读子进程）、
+  截图翻译（遮罩框选 → `Windows.Media.Ocr`）、窗口生命周期、WebView2、DWM 圆角、原生拖动。
   WinForms 只做 Windows 集成，业务不进 Form。
 - **业务核心**（`src/csharp/TranslatorCore`，类库）：翻译/Provider/配置/剪贴板/HTTP/JSON，
   全 async + CancellationToken。
-- **UI 页面**（`src/webui/`，React 19 + TypeScript）：settings/result/capture/config 四页，
+- **UI 页面**（`src/webui/`，React 19 + TypeScript）：settings/result/capture/config/input 五页，
   按页单文件构建；与宿主通过 JSON 消息协议通信（契约见 `docs/protocol.md`）。
 - AHK 版本与迁移期 Named Pipe 桥已分别于 v1.4/v1.5 退役删除。
 
@@ -170,6 +190,10 @@ translate-for-developers/
 - **提示"网络请求失败"**：检查网络；MyMemory 偶发超时，可在窗口里点「重试」
 - **想换翻译服务**：托盘菜单 → 切换翻译服务
 - **快捷键和别的软件冲突**：托盘菜单 → 更改翻译热键 → 直接按你想要的组合键
+- **截图翻译提示未安装 OCR 语言包**：Windows 设置 → 时间和语言 → 语言和区域 →
+  添加语言 → 勾选「光学字符识别」可选功能（Win10/11 通常已内置中英文）
+- **截图翻译识别不准**：OCR 语言跟随「源语言」设置（auto = 系统语言）；
+  纯英文内容建议把源语言设为英语。截图分辨率过低的文字（小于约 12px）识别率有限
 - **译文窗口怎么移动**：按住顶部标题栏（logo 一行）拖动即可
 - **首次启动弹"找不到 WebView2"**：到 [微软官网](https://developer.microsoft.com/microsoft-edge/webview2/) 装一次 Evergreen Runtime（正常 Win10/11 不需要）
 - **开机自启（可选）**：把 translator.exe 的快捷方式放进 `shell:startup`

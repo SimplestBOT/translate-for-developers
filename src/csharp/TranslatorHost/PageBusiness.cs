@@ -131,7 +131,7 @@ namespace TranslatorHost
             switch (type)
             {
                 case "translate":
-                    return HandleTranslate(winId, rid);
+                    return HandleTranslate(winId, rid, env);
                 // close/drag：宿主所有窗口一律自己处理（阶段 6 起无 AHK 兜底）
                 case "close":
                     CloseWindowById(winId);
@@ -294,6 +294,19 @@ namespace TranslatorHost
             }
         }
 
+        /// <summary>可复用的输入翻译窗：最近打开且未关闭的自开 input 窗
+        ///（热键重复唤起时激活已有窗而非再开一个）。0 = 无。</summary>
+        public int FindReusableInputWindow()
+        {
+            lock (_selfPages)
+            {
+                int best = 0;
+                foreach (var kv in _selfPages)
+                    if (kv.Value == "input" && kv.Key > best) best = kv.Key;
+                return best;
+            }
+        }
+
         /// <summary>可复用的结果窗：最近打开且未关闭的自开 result 窗（遗留优化：
         /// 翻译窗未关时再次划词，在同一窗口刷新而不是再开一个）。0 = 无。</summary>
         public int FindReusableResultWindow()
@@ -373,7 +386,32 @@ namespace TranslatorHost
                     { "provider", ProviderCatalog.DisplayName(cfg.Provider) },
                     { "providerKey", cfg.Provider },
                     { "ndrag", ndrag },
-                    
+
+                    { "hotkey", CaptureManager.FormatHotkey(cfg.Hotkey) },
+                    { "hotkeyKeys", CaptureManager.KeysJson(cfg.Hotkey) },
+                    { "langs", BuildLangsList() },
+                    { "src", cfg.SourceLang },
+                    { "tgt", cfg.TargetLang },
+                    { "hasKeys", !string.IsNullOrEmpty(cfg.BaiduAppid) && !string.IsNullOrEmpty(cfg.BaiduSecret) }
+                });
+            }
+            else if (page == "input")
+            {
+                // input init（优化 6）：与 result 同构（Popover 复用 settings 组件）
+                // + preText（--open input,文本 的预填文本；预填非空时页面自动翻译
+                // 一次——自动化验证路径；热键唤起为空串，页面不自动翻）。
+                string text;
+                lock (_pendingText) { _pendingText.TryGetValue(winId, out text); }
+                payload = JsonUtil.Serialize(new Dictionary<string, object>
+                {
+                    { "srcText", "" },
+                    { "preText", text ?? "" },
+                    { "srcLangLabel", cfg.SourceLang == "auto" ? "AUTO" : cfg.SourceLang.ToUpperInvariant() },
+                    { "tgtLangLabel", cfg.TargetLang.ToUpperInvariant() },
+                    { "provider", ProviderCatalog.DisplayName(cfg.Provider) },
+                    { "providerKey", cfg.Provider },
+                    { "ndrag", ndrag },
+
                     { "hotkey", CaptureManager.FormatHotkey(cfg.Hotkey) },
                     { "hotkeyKeys", CaptureManager.KeysJson(cfg.Hotkey) },
                     { "langs", BuildLangsList() },
@@ -724,7 +762,9 @@ namespace TranslatorHost
             return true;
         }
 
-        private bool HandleTranslate(int winId, int requestId)
+        /// <summary>translate 承接（优化 6：payload 可带 ["文本"]——input 页直接
+        /// 传输入内容；result 页继续发空 payload 走 SetPendingText 暂存）。</summary>
+        private bool HandleTranslate(int winId, int requestId, Dictionary<string, object> env)
         {
             if (!OwnsBusiness)
             {
@@ -733,8 +773,13 @@ namespace TranslatorHost
                 return true;
             }
 
+            var args = JsonUtil.GetList(env, "payload");
+            string fromPage = args != null && args.Count > 0 ? args[0] as string : null;
             string text;
-            lock (_pendingText) { _pendingText.TryGetValue(winId, out text); }
+            if (!string.IsNullOrEmpty(fromPage))
+                text = fromPage;
+            else
+                lock (_pendingText) { _pendingText.TryGetValue(winId, out text); }
             Program.LogHost("translate 承接 winId=" + winId + " rid=" + requestId
                 + " textLen=" + (text == null ? -1 : text.Length));
 

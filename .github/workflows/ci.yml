@@ -1,0 +1,68 @@
+# CI: build + tests + webui + host selftest on every push/PR to main.
+# net48 needs no VS/Developer Pack (Microsoft.NETFramework.ReferenceAssemblies).
+# OCR WinRT projection needs Windows.winmd: runner SDK is located explicitly and
+# passed as -p:WindowsWinMd=... (csproj auto-chain is the local-dev fallback).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Locate Windows SDK winmd
+        shell: pwsh
+        run: |
+          $md = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\UnionMetadata\*\Windows.winmd' -ErrorAction SilentlyContinue |
+            Sort-Object { [version]$_.Directory.Name } -Descending | Select-Object -First 1
+          if ($md) {
+            Write-Host "winmd: $($md.FullName)"
+            Add-Content $env:GITHUB_ENV "WINMD=$($md.FullName)"
+          } else {
+            Write-Host "::warning::no Windows.winmd in runner image - OCR code will fail to compile"
+          }
+
+      - name: Build C# (core / host / uia helper / tests)
+        shell: pwsh
+        run: |
+          $p = @()
+          if ($env:WINMD) { $p += "-p:WindowsWinMd=$env:WINMD" }
+          dotnet build src/csharp/TranslatorCore/TranslatorCore.csproj -c Release @p
+          dotnet build src/csharp/TranslatorHost/TranslatorHost.csproj -c Release @p
+          dotnet build src/csharp/TranslatorUia/TranslatorUia.csproj -c Release
+          dotnet build src/csharp/TranslatorCore.Tests/TranslatorCore.Tests.csproj -c Release
+
+      - name: Core tests
+        run: dotnet run --project src/csharp/TranslatorCore.Tests -c Release --no-build
+
+      - name: Build WebUI (5 pages)
+        shell: bash
+        working-directory: src/webui
+        run: |
+          npm ci
+          for p in settings result capture config input; do
+            TFD_PAGE=$p npm run build
+          done
+
+      - name: Host selftest
+        run: src/csharp/TranslatorHost/bin/Release/net48/win-x64/translator-ui.exe --selftest
+
+      - name: Upload WebUI dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: webui-dist
+          path: src/webui/dist/*.html
+          retention-days: 7

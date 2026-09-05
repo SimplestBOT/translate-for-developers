@@ -1,11 +1,15 @@
 # Translate for Developers
 
+[![CI](https://github.com/SimplestBOT/translate-for-developers/actions/workflows/ci.yml/badge.svg)](https://github.com/SimplestBOT/translate-for-developers/actions/workflows/ci.yml)
+
+<p align="center"><img src="demo.gif" alt="划词 → 热键 → 译文 → 复制" width="590"></p>
+
 [简体中文](README.md) · [English](README.en.md) · [日本語](README.ja.md) · **한국어**
 
 영어 텍스트를 선택하고 단축키만 누르면 중국어 번역이 바로 팝업으로 나타납니다. 코드 주석, 영어 문서, 논문 초록을 읽을 때——**어떤 앱에서든 사용 가능**합니다.
 
 MATLAB의 영어 주석이 이해되지 않나요? VS Code의 영어 에러 메시지에 막혔나요? PDF의 한 구절에서 고민 중인가요?
-선택 → 단축키 → 번역이 바로 표시됩니다.
+선택 → 단축키 → 번역이 바로 표시됩니다. **선택할 수 없는 텍스트——에러 스크린샷, 이미지, 동영상 자막——은 스크린샷 단축키로 영역을 박스하기만 하면 됩니다.**
 
 ## 이 도구를 만든 이유
 
@@ -16,6 +20,8 @@ MATLAB, VS Code, 브라우저, PDF 리더 등 **복사를 지원하는 모든 �
 ## 기능
 
 - 어떤 앱에서든 텍스트 선택 → 단축키로 번역 (기본값 `Ctrl+Alt+T`, 언제든 변경 가능)
+- **스크린샷 번역 (v1.6)**: 에러 스크린샷·이미지·동영상 자막처럼 선택할 수 없는 텍스트도 번역. 스크린샷 단축키 (기본값 `Ctrl+Alt+Z`, 트레이 메뉴에도 있음) → 영역 드래그 → Windows 내장 OCR (무료·오프라인·의존성 없음) 인식 → 자동 번역
+- **입력 번역 (v1.7)**: `Ctrl+Alt+I`로 여러 줄 입력창을 열고 `Enter`로 번역——에러 조회·주석 작성·변수명 고민 시 직접 입력
 - **완전히 새로운 다크 UI(v1.1)**: 시스템 내장 WebView2로 렌더링 —— 글래스 카드, 등장 애니메이션, 스캔 빔 로딩 바, 스켈레톤 화면, 키캡 스프링 효과; 번역은 **비동기** 처리되어 창이 즉시 열리고 애니메이션이 끊기지 않습니다
 - **원본 언어 자동 감지**(수동 지정도 가능), **대상 언어 30+ 종**(중국어·영어·일본어·한국어·프랑스어·독일어·스페인어·러시아어…)
 - 클립보드 자동 백업/복원 —— 복사해둔 내용을 **절대 훼손하지 않습니다**
@@ -31,7 +37,9 @@ MATLAB, VS Code, 브라우저, PDF 리더 등 **복사를 지원하는 모든 �
 1. `start-translator.bat` 실행(또는 `src/bridge/translator-ui.exe` 직접 실행)—— 트레이에 "T" 아이콘이 나타납니다
 2. 아무 앱에서나 **영어 텍스트 선택** → **`Ctrl+Alt+T`** 누름 → 번역 창이 팝업으로 열립니다
 3. 창 안에서: 제목표시줄을 드래그해 이동; `Esc`로 닫기; `Enter` 또는 "복사" 버튼으로 번역 복사
-4. 트레이 아이콘(T) → 오른쪽 클릭 메뉴: 단축키 변경 / 서비스 전환 / 언어 선택 / 종료
+4. 트레이 아이콘(T) → 오른쪽 클릭 메뉴: 단축키 변경 / 서비스 전환 / 언어 선택 / 스크린샷 번역 / 입력 번역 / 종료
+5. **스크린샷 번역**: `Ctrl+Alt+Z` 누름 (또는 트레이 메뉴) → 영역을 드래그 → 놓으면 자동 OCR·번역; `Esc`·오른쪽 클릭으로 취소
+6. **입력 번역**: `Ctrl+Alt+I` 누름 (또는 트레이 메뉴) → 텍스트 입력 → `Enter`로 번역 (`Shift+Enter` 줄바꿈)
 
 ## 설정
 
@@ -39,6 +47,8 @@ MATLAB, VS Code, 브라우저, PDF 리더 등 **복사를 지원하는 모든 �
 
 ```ini
 hotkey=^!d              ; 번역 단축키 (트레이 메뉴에서 변경 가능)
+shot_hotkey=^!z         ; 스크린샷 번역 단축키 (이 파일 수정 후 호스트 재시작 시 적용)
+input_hotkey=^!i        ; 입력 번역 단축키 (이 파일 수정 후 호스트 재시작 시 적용)
 src_lang=auto           ; 원본 언어: auto=자동 감지, 또는 zh-CN/en/ja/ko/…
 tgt_lang=zh-CN          ; 대상 언어 (기본값: 중국어 간체)
 provider=mymemory       ; mymemory / baidu / deepl / llm
@@ -53,7 +63,7 @@ llm_model=              ; 모델 이름 (예: gpt-4o-mini / deepseek-chat)
 llm_prompt=             ; 선택적 번역 프롬프트; 비우면 내장 기본값
 ```
 
-> 트레이 메뉴에서 단축키 변경·서비스 전환 시 이 파일에 자동 저장됩니다. 수동 편집은 불필요합니다.
+> 트레이 메뉴에서 단축키 변경·서비스 전환 시 이 파일에 자동 저장됩니다. 수동 편집은 불필요합니다. 스크린샷 번역 단축키(`shot_hotkey`)는 당분간 파일 편집만 지원: 수정 후 호스트를 재시작하세요.
 
 > **키 보안**: 바이두 APP ID / 시크릿 키는 Windows **DPAPI**로 암호화되어 저장됩니다(`dpapi:` 접두사 암호문, 이 PC의 현재 Windows 계정에서만 복호화 가능). `config.conf`를 다른 PC로 복사해도 키를 읽을 수 없습니다. 구버전 평문 파일은 첫 실행 시 자동 마이그레이션됩니다. 진단 로그에 키 내용은 기록되지 않으며, `config.conf`는 `.gitignore`에서 제외되어 있습니다(수동 커밋 금지).
 
@@ -122,14 +132,15 @@ TFD_PIPE_NAME=<name>                    ; 인스턴스 격리 키 (병렬 테스
 TFD_TEST_REUSE=1                        ; 결과 창 재사용 플로우 자동 구동
 ```
 
-## 아키텍처 (v1.5, 마이그레이션 완료)
+## 아키텍처 (v1.7, 마이그레이션 완료)
 
 - **C# 호스트**(`src/csharp/TranslatorHost`, net48 + WinForms + WebView2): 유일한 호스트——
-  트레이, 전역 단축키, 선택 캡처(Ctrl+C 주입), 창 라이프사이클, WebView2, DWM 둥근 모서리, 네이티브 드래그.
+  트레이, 전역 단축키(선택 + 스크린샷 번역), 선택 캡처(터미널 보호·UIA 직접 읽기 헬퍼 자식 프로세스),
+  스크린샷 번역(오버레이 영역 선택 → `Windows.Media.Ocr`), 창 라이프사이클, WebView2, DWM 둥근 모서리, 네이티브 드래그.
   WinForms는 Windows 통합만 담당하며, 비즈니스 로직은 Form에 넣지 않습니다.
 - **핵심 라이브러리**(`src/csharp/TranslatorCore`): 번역/프로바이더/설정/클립보드/HTTP/JSON,
   전부 async + CancellationToken.
-- **UI 페이지**(`src/webui/`, React 19 + TypeScript): settings/result/capture/config 4페이지, 페이지 단위 싱글 파일 빌드;
+- **UI 페이지**(`src/webui/`, React 19 + TypeScript): settings/result/capture/config/input 5페이지, 페이지 단위 싱글 파일 빌드;
   호스트와는 JSON 메시지 프로토콜로 통신(계약은 `docs/protocol.md`).
 - AHK 버전과 마이그레이션 기간의 Named Pipe 브리지는 각각 v1.4/v1.5에서 폐기·삭제되었습니다(백업은 저장소에 미포함).
 
@@ -162,6 +173,8 @@ translate-for-developers/
 - **"네트워크 요청 실패" 표시**: 네트워크 확인; MyMemory는 가끔 시간 초과 —— 창의 "다시 시도" 클릭
 - **번역 서비스를 바꾸고 싶음**: 트레이 메뉴 → 번역 서비스 전환
 - **단축키가 다른 소프트웨어와 충돌**: 트레이 메뉴 → 단축키 변경 → 원하는 조합키를 직접 누르기
+- **스크린샷 번역에서 "OCR 언어 팩 미설치" 안내**: Windows 설정 → 시간 및 언어 → 언어 및 지역 → 언어 추가 → "광학 문자 인식" 옵션 기능 체크 (Win10/11은 보통 중·영어 내장)
+- **스크린샷 번역 인식률이 낮음**: OCR 언어는 "원본 언어" 설정을 따름 (auto = 시스템 언어). 영어 전용 내용은 원본 언어를 영어로. 너무 작은 글자(약 12px 미만)는 인식률이 떨어짐
 - **번역 창 이동 방법**: 상단 제목표시줄(로고가 있는 줄)을 잡고 드래그
 - **첫 실행 시 "WebView2를 찾을 수 없음"**: [마이크로소프트 공식 사이트](https://developer.microsoft.com/microsoft-edge/webview2/)에서 Evergreen Runtime을 한 번 설치 (일반적인 Win10/11에서는 불필요)
 - **시작 시 자동 실행(선택)**: translator.exe 바로 가기를 `shell:startup`에 넣기

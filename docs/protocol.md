@@ -1,10 +1,13 @@
-# Protocol 契约（v1.4）
+# Protocol 契约（v1.5）
 
 > 本文档是 UI ↔ Host 之间的**长期稳定接口契约**。React 前端与 C# 宿主直接实现/消费本协议；信封与消息均为 Transport 无关（页面消息走 WebView2 postMessage/`__recv` 双通道）。
 > **v1.1（阶段 3）**：新增 `config_set`、`hello.configPath/configOwner`、`init.testError`（调试字段）；宿主开始承接 `translate`/`copy` 页面消息。
 > **v1.2（阶段 5a）**：新增桥上 `hotkey_capture`/`hotkey_apply`/`hotkey_cancel`（A→C）与 `hotkey_changed`/`hotkey_changed_ack`（C→A）；capture/settings 页热键捕获消息流改由宿主承接。
 > **v1.3（阶段 6）**：**AHK 退役，宿主纯独立模式**；`hotkey_*` 桥消息与 `page_event` 透传删除。
 > **v1.4（阶段 7）**：**Named Pipe 桥测试面整体删除**（`hello`/`open_window`/`push`/`config_set`/`close_window`/`window_ready`/`window_closed`/`page_event` 全部移除，`docs` 中原 §6 作废）；宿主仅存页面级信封；`init.testError` 调试字段随 push 路径删除；`e2e-synth` 合成客户端退役。页面↔宿主协议（§2/§3/§4）自 v1.1 起未变，major 保持 1、minor 3→4。
+> **v1.5（优化 4）**：新增 `saveDeepl`/`saveLlm` 消息与 `deeplSaved`/`llmSaved` 帧、`provider_not_ready` 错误码、settings init `deepl*`/`llm*` 7 字段；`setProvider` 白名单扩 `deepl`/`llm`。
+> **优化 5（截图翻译，2026-09-05）**：**协议零变更**——截图翻译（遮罩框选 → OCR → 复用 result 窗链路）不涉及页面消息；热键 `shot_hotkey` 为 config.conf 文件级配置（默认 `^!s`），UI 化为后续项。
+> **优化 6（输入翻译，2026-09-05）**：新增第五页 `input`（热键 `input_hotkey` 默认 `^!i` 唤起，多行输入、Enter 翻译）；**`translate` payload 扩展**：可为 `["文本"]`（页面直接携带输入内容，input 页用），空数组语义不变（result 页继续走 SetPendingText 暂存）；input init = result init 同构（Popover 复用）+ `preText` 字段（`--open input,文本` 预填并自动翻译，热键唤起为空串）。
 
 ## 1. 消息信封
 
@@ -40,7 +43,7 @@
 | `close` | `[]` | 请求关闭窗口 | 全部 |
 | `drag` | `[]` | 标题栏拖动（仅宿主未启用原生拖动时发出） | 全部 |
 | `copy` | `["text"]` | 复制文本到剪贴板 | result |
-| `translate` | `[]` | 发起翻译（requestId 用于配对 result/error） | result |
+| `translate` | `[]` 或 `["文本"]` | 发起翻译（requestId 用于配对 result/error）。空 payload=result 页翻译暂存文本；`["文本"]`=input 页直接传输入内容（优化 6） | result / input |
 | `apply` | `[]` | 应用捕获的热键 | capture / settings |
 | `recapture` | `[]` | 重新捕获热键 | capture / settings |
 | `cancel` | `[]` | 取消并关闭（旧捕获页） | capture |
@@ -130,6 +133,10 @@ UI 只消费此模型与 `{code, message}` 错误帧，**永不接触 Provider �
 设置字段（v1.2/阶段 5d 引入）供主窗口设置 Popover 复用 settings 组件与同一批消息；变更生效后页面补发 `translate`（ConfigStore 每次请求现读，语言/提供商即时生效）。
 
 **生命周期（v1.4）**：宿主**常驻纯独立运行**——启动即托盘+全局翻译热键+选中捕获（配置自 `TFD_CONFIG` 或 `<bridge>\..\..\scripts\config.conf`）。进程仅经托盘「退出」或 `--open` 调试窗关闭/超时结束。调试参数：`--selftest`（无头自检）、`--open <page>[,text]`（独立模式直接开页，60s 安全阀）、`TFD_HEADLESS=1`（无托盘无热键）、`TFD_CONFIG`（配置路径覆盖）、`TFD_TEST_REUSE=1`（自动驱动结果窗复用流程）。`TFD_PIPE_NAME` 仅作实例互斥 Mutex 键（历史名）。`ndrag` = 宿主是否启用原生非客户区拖动（决定页面是否发送 `drag` 消息）。
+
+**截图翻译（优化 5，2026-09-05）**：第二全局热键 `shot_hotkey`（config.conf，默认 `^!z`——初始默认 `^!s` 在用户桌面与既有截图工具冲突后调整，文件级配置）+ 托盘「截图翻译」菜单项 → 光标所在屏拍快照 → 全屏遮罩窗框选（Esc/右键取消，松手/Enter 确认，<12px 误触丢弃）→ 区域裁剪 → `Windows.Media.Ocr` 识别（进程内 WinRT，后台线程 + 8s 超时；OCR 语言跟随翻译源语言，`auto` 用系统语言引擎，全不中回退系统语言）→ 识别文本走与划词完全相同的结果窗链路（复用/缓存/降级）。OCR 失败/未识别到文字以托盘气球提示。调试：`TFD_TEST_SHOT=1`（3s 后自动以主屏中央 800×500 跑 OCR→开窗，开窗 8s 后自动退出）；`--selftest` 附 `ocr-engine` 能力注记。已知边界：仅覆盖光标所在屏（多屏跨选后续项）；无 OCR 语言包时明确报错并给安装指引。
+
+**输入翻译（优化 6，2026-09-05）**：第三全局热键 `input_hotkey`（config.conf，默认 `^!i`，文件级配置）+ 托盘「输入翻译」菜单项 → 开 input 窗（webui 第五页，宿主自开窗 Center 定位）→ 多行输入（Enter 翻译、Shift+Enter 换行、Esc 关窗）→ `translate` 带 `["文本"]` → 复用与划词完全相同的 Core 链路 → result/error 帧渲染（DstCard/ErrorCard/SettingsPopover 组件与 result 页共用）。重复唤起：已有 input 窗 → 宿主激活窗口（保留输入/译文状态），页面 window focus 事件重新聚焦输入框。`--open input[,文本]`：预填文本非空时页面 init 后自动翻译一次（全链路自动化路径，锚点 `input-rendered`/`input-result-rendered`）。
 
 ## 7. 测试锚点
 

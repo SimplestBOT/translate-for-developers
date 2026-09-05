@@ -20,6 +20,34 @@
     <Reference Include="System.Security" />
     <!-- Clipboard 模块需要 WinForms（宿主在 STA UI 线程调用） -->
     <Reference Include="System.Windows.Forms" />
+    <!-- OcrService 位图处理（Bitmap/LockBits/InterpolationMode） -->
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+
+  <!-- 优化 5：Windows 内置 OCR（Windows.Media.Ocr，Win10+ 自带、免费离线）。
+       net48 消费 WinRT = 本地 Windows Kits 的 Windows.winmd（编译期引用，
+       Private=false 不复制进输出 → 运行时零部署）+ GAC System.Runtime.WindowsRuntime
+      （IAsyncOperation.AsTask / byte[].AsBuffer）。编译机无对应 SDK 版本时需
+       安装 Windows 10 SDK 或按实际版本追加一行条件。 -->
+  <PropertyGroup>
+    <WindowsWinMd Condition="'$(WindowsWinMd)' == '' And Exists('C:\Program Files (x86)\Windows Kits\10\UnionMetadata\10.0.26100.0\Windows.winmd')">C:\Program Files (x86)\Windows Kits\10\UnionMetadata\10.0.26100.0\Windows.winmd</WindowsWinMd>
+    <WindowsWinMd Condition="'$(WindowsWinMd)' == '' And Exists('C:\Program Files (x86)\Windows Kits\10\UnionMetadata\10.0.22621.0\Windows.winmd')">C:\Program Files (x86)\Windows Kits\10\UnionMetadata\10.0.22621.0\Windows.winmd</WindowsWinMd>
+    <WindowsWinMd Condition="'$(WindowsWinMd)' == '' And Exists('C:\Program Files (x86)\Windows Kits\10\UnionMetadata\10.0.22000.0\Windows.winmd')">C:\Program Files (x86)\Windows Kits\10\UnionMetadata\10.0.22000.0\Windows.winmd</WindowsWinMd>
+    <WindowsWinMd Condition="'$(WindowsWinMd)' == '' And Exists('C:\Program Files (x86)\Windows Kits\10\UnionMetadata\10.0.20348.0\Windows.winmd')">C:\Program Files (x86)\Windows Kits\10\UnionMetadata\10.0.20348.0\Windows.winmd</WindowsWinMd>
+    <WindowsWinMd Condition="'$(WindowsWinMd)' == '' And Exists('C:\Program Files (x86)\Windows Kits\10\UnionMetadata\10.0.19041.0\Windows.winmd')">C:\Program Files (x86)\Windows Kits\10\UnionMetadata\10.0.19041.0\Windows.winmd</WindowsWinMd>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(WindowsWinMd)' != ''">
+    <Reference Include="Windows">
+      <HintPath>$(WindowsWinMd)</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- SDK-style 项目简单名称引用解析不到 GAC → 指向 GAC 固定模式路径
+         （v4.0_4.0.0.0__b77a5c561934e089 在所有 .NET4.x 机器一致）；
+         Private=false：运行时经 GAC 解析，不复制进输出（零部署依赖） -->
+    <Reference Include="System.Runtime.WindowsRuntime">
+      <HintPath>$(WINDIR)\Microsoft.NET\assembly\GAC_MSIL\System.Runtime.WindowsRuntime\v4.0_4.0.0.0__b77a5c561934e089\System.Runtime.WindowsRuntime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>

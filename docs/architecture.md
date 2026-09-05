@@ -40,6 +40,7 @@ AHK = 0（阶段 6 ✅）；Named Pipe 桥 = 0（阶段 7 ✅）——迁移收�
 |---|---|---|---|
 | Translation | `TranslateText` `TranslateSafe` `DoTranslateWorker`、分片 `SplitTextByChars` `SplitTextByBytes` | `Translator.Core.Translation` | **3 ✅** |
 | Provider | `TranslateMyMemory` `TranslateBaidu`、签名 `Md5Hex`、`UrlEncode`、`ProviderName` | `Translator.Core.Providers`（`ITranslationProvider`） | **3 ✅** |
+| OCR（优化 5，v1.6） | 无（新增能力：截图 → `Windows.Media.Ocr` 识别） | `Translator.Core.Ocr`（`OcrService`/`OcrText` 纯函数；net48 经 Windows.winmd + GAC System.Runtime.WindowsRuntime，运行时零部署） | **优化 5 ✅** |
 | Configuration | `SaveConfig` `LoadConfig`、`config.conf` / `hotkey.conf` 兼容读取 | `Translator.Core.Configuration`（唯一 Owner 移交） | **3 ✅**（写方移交；hotkey.conf 兼容读取随阶段 5 热键迁移） |
 
 ### Windows Integration → C#（分批）
@@ -59,6 +60,7 @@ AHK = 0（阶段 6 ✅）；Named Pipe 桥 = 0（阶段 7 ✅）——迁移收�
 | Result | `scripts/html/result.html` | `webui/src/result` | **4b ✅（2026-09-01，双轨同 4a）** |
 | Capture | `scripts/html/capture.html` | `webui/src/capture` | **4c ✅（2026-09-01，双轨同 4a）** |
 | Config | `scripts/html/config.html` | `webui/src/config` | **4d ✅（2026-09-01，双轨同 4a）** |
+| Input（输入翻译） | 无（新增能力：热键唤起多行输入 → translate 带文本） | `webui/src/input`（复用 result 页组件与 css） | **优化 6 ✅（2026-09-05，五页）** |
 
 **webui 构建约束**：vite-plugin-singlefile 单入口限制 → 按页构建（`TFD_PAGE=<name> npx vite build`，页面在 `vite.config.ts PAGES` 登记）；产物 `webui/dist/<page>.html`（自包含，约 200KB，低于 NavigateToString 2MB 上限）；`webui/src/bridge/protocol.ts` 为页面侧协议唯一实现（post/on/installBridge，双通道接收：chrome.webview message 主 + `__recv` 兜底）。
 

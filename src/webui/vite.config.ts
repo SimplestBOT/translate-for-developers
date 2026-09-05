@@ -10,7 +10,7 @@ import react from '@vitejs/plugin-react'
 import { viteSingleFile } from 'vite-plugin-singlefile'
 import { resolve } from 'path'
 
-export const PAGES = ['settings', 'result', 'capture', 'config'] as const
+export const PAGES = ['settings', 'result', 'capture', 'config', 'input'] as const
 
 const page = process.env.TFD_PAGE ?? 'settings'
 if (!(PAGES as readonly string[]).includes(page)) {

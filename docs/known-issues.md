@@ -385,3 +385,178 @@
    面板内容超出 540px 结果窗，被 body overflow:hidden 裁底。修复=
    `.spov` max-height:calc(100vh-110px)+overflow-y:auto 面板内滚动；
    error 分支补 provider_not_ready → hint 提示。重建 result 页。
+
+## 优化 5：截图 OCR / 截图翻译（2026-09-05）
+
+- **需求**（用户提出）：报错截图、PDF 里的图片、视频字幕——都是"选不中文字"
+  的场景。优先接 **Windows 内置 OCR API**（`Windows.Media.Ocr`，Win10+ 自带、
+  免费离线、零依赖）；Tesseract / 百度 OCR 为可选后置项。
+- **关键决策：进程内调 OCR，不走子进程**（与 P1 UIA 子进程隔离的差异）：
+  UIA 连到不可信第三方进程、目标挂死会拖死宿主（实测事故）；OCR 走系统
+  RuntimeBroker 服务、输入是自己的位图，不依赖第三方应用死活——无"目标
+  挂死拖死宿主"面。识别放后台线程 + 8s 超时放弃（残留任务自灭）。
+- **实现**：
+  1. `TranslatorCore/Ocr/OcrText.cs`（纯函数，WinRT 零耦合可单测）：
+     `PickLanguage`（翻译源语言 → OCR 引擎语言：auto→系统语言引擎；zh-cn→
+     zh-hans 族、zh-tw→zh-hant 族、族缺失任何 zh 兜底；主子标签前缀 →
+     主标签前缀近亲；全不中回退系统语言——OCR 语言包可选面本来就窄，识别
+     质量略降强于失败）；`FitDimension`（超 MaxImageDimension 等比缩小）；
+     `JoinLines`（行尾剥离 + CRLF 拼接，保留行结构——报错堆栈对齐可读）。
+  2. `TranslatorCore/Ocr/OcrService.cs`（WinRT 包装）：引擎选择 → GDI 位图
+     → `SoftwareBitmap`（Bgra8；**CopyFromScreen 快照 alpha 通道未定义，
+     逐行拷贝时强制 0xFF，否则 premultiplied 语义下被当全透明识别为空**）
+     → `RecognizeAsync` `.AsTask()` 同步等待超时放弃。签名全托管（Bitmap→
+     自定义 OcrOutcome），Tests 工程无需 winmd 引用。`Probe()` 供 selftest。
+  3. **net48 消费 WinRT 的引用方式**（编译机绑定，运行时零部署）：本地
+     Windows Kits 的 `UnionMetadata\<ver>\Windows.winmd`（Private=false 不复制）
+     + GAC `System.Runtime.WindowsRuntime`（AsTask / byte[].AsBuffer）——
+     **SDK-style 项目简单名称引用解析不到 GAC**，HintPath 指 GAC 固定模式
+     路径 `$(WINDIR)\Microsoft.NET\assembly\GAC_MSIL\...\v4.0_4.0.0.0__b77a5c561934e089\`
+     （所有 .NET4.x 机器一致）。csproj 按 26100/22621/19041 三版本 Exists
+     条件链自动选择。运行时 winmd 由 CLR 从 `%WINDIR%\System32\WinMetadata`
+     内建解析，产物零新增文件。**OcrEngine 未实现 IClosable（无 Dispose）**。
+  4. `TranslatorHost/CaptureShot.cs`：`ShotController.Start`（UI 线程）——
+     光标所在屏 `CopyFromScreen` 快照（PMv2 感知进程下 Screen.Bounds/鼠标
+     坐标=物理像素，与快照 1:1 无换算）→ 全屏遮罩窗 `ShotOverlayForm`
+     （快照打底 + 半透明暗罩 + 橡皮筋选框、尺寸标签、顶部提示条；松手/
+     Enter 确认，Esc/右键取消，<12px 误触丢弃）→ 裁剪 → `Task.Run` OCR →
+     marshal 回 UI → 文本进 `OpenResultWithText`（从 OpenResultFromSelection
+     抽出的共用落地：结果窗复用 → 开新窗，缓存/重试/降级全生效）。
+     防御：遮罩窗 OnShown 实测 GetWindowRect 与期望偏差 >2px 时 SetWindowPos
+     纠偏 + 日志取证（防 WinForms 对 Bounds 的 DPI 虚拟化）。busy 单飞锁
+     覆盖遮罩交互阶段（模态嵌套泵仍分发 WM_HOTKEY，二次触发拒绝）。
+  5. **Standalone**：第二热键 `HOTKEY_ID_SHOT=0xB00C`（`shot_hotkey`，
+     默认 `^!s`，ParseHotkey 复用；注册失败仅降级日志，托盘入口仍可用）+
+     托盘「截图翻译（Ctrl+Alt+S）」菜单项 + Deps.TranslateShot + 启动气球
+     文案带双热键。
+  6. ConfigStore +1 键 `shot_hotkey`（13→14 键；文件级配置，UI 化为后续项）。
+     selftest 增 `ocr-engine` 能力注记（不计 PASS/FAIL）。调试门
+     `TFD_TEST_SHOT=1`：3s 后自动以主屏中央 800×500 跑 OCR→开窗全链路
+     （跳过遮罩交互），开窗 8s 后自动退出。
+- **测试**：Core 196→**218 断言**（+22：PickLanguage 12 / FitDimension 5 /
+  JoinLines 5）。build 0 警告 0 错误；selftest PASS（ocr-engine=2 langs
+  [en-US,zh-Hans-CN] profile=zh-Hans-CN）。隔离实例 TFD_TEST_SHOT：链路全通
+  （快照→引擎 ok=1→balloon 回路；**len=0 系沙箱桌面 BitBlt 黑屏**——与
+  computer-use 截图全黑同源，环境限制非代码）；**识别质量用构造位图探针
+  验证**：白底黑字 "THE QUICK BROWN FOX 12345" 25 字符逐字精确识别
+  （lang=en-US）。TFD_TEST_REUSE 回归（OpenResultWithText 重构后划词链路）：
+  同窗两次真翻译 3090/875ms 全绿。
+- **待用户桌面实测**：① ^!S 热键触发遮罩 → 框选报错截图 → 译文弹出；
+  ② 托盘「截图翻译」菜单项；③ Enter 确认 / Esc、右键取消 / 误触丢弃；
+  ④ 源语言 auto 与指定 en 两种 OCR 语言路径；⑤ 无选中遮挡时全屏截图翻译；
+  ⑥ 划词翻译行为回归（^!H）；⑦ 多屏机器验证副屏截图（仅光标所在屏）。
+- **已知边界**：① 仅覆盖光标所在单屏（跨屏虚拟桌面遮罩为后续项）；
+  ② OCR 语言包缺失时报错并给 Windows 设置指引（Win10/11 通常已内置中英文）；
+  ③ 暗罩下被遮挡部分照常截入（快照在遮罩显示前拍，内容=按热键瞬间屏幕）；
+  ④ 截图翻译热键为文件级配置（改 config.conf 后重启宿主生效）；
+  ⑤ 远程桌面/安全桌面场景 CopyFromScreen 可能失败（气球明示）。
+- **测试工具留存**：scripts/shotprobe.cs（构造位图识别探针）、
+  scripts/shot-e2e.ps1（TEST_SHOT 驱动）、scripts/shot-test-target.ps1
+  （屏幕中央大字窗）、scripts/reuse-regression.ps1、scripts/probe-ocr-env.ps1。
+- **默认热键变更（2026-09-05 当日，用户指定）**：默认 `shot_hotkey` ^!s →
+  **^!z**——部署后实测用户桌面 ^!S 已被其他软件注册（err=1409，大量截图
+  工具的常见默认键），用户选定 `Ctrl+Alt+Z`。四语 README/protocol.md 同步，
+  托盘菜单与启动气球热键文案随配置显示。
+- **坑（改默认值被显式配置压住）**：改 ConfigStore 代码默认值后重启，日志
+  仍注册 ^!s——上一轮宿主（旧默认代码）运行期间发生过 WriteSync，14 键
+  全量写盘已把 `shot_hotkey=^!s` 落进 config.conf，读侧显式值优先于代码
+  默认。**代码默认值只对"配置缺失"生效；宿主跑过一轮后配置即成事实**。
+  处置=停宿主 → 脚本单行替换 config.conf 该值（非密钥行；脚本不输出文件
+  其余内容，UTF-8 BOM/LF 原样保持）→ 重启 → `shot hotkey registered: ^!z`
+  验证。改动含密钥文件时仍遵守"不读值/不显示/不提交"约束（密钥行在内存
+  流过但零输出）。
+- **准确率预处理（2026-09-05，用户反馈"识别准确率不高，问是否 Windows OCR
+  的问题"）**：诊断=引擎为白底黑字扫描文档优化的本地小模型（无语言模型
+  纠错），**暗底浅字（深色 IDE/终端截图=开发场景主流量）识别率暴跌** +
+  字高 <20px 识别率骤降——前两者可在喂引擎前预处理补救。实现（OcrService
+  管线）：区域平均亮度抽样（Rec.601 luma，~5 万样本）→ ShouldInvert
+  （<128 反色，背景占多数像素故均值代表背景）→ ShouldUpscale（h<160 整图
+  2x bicubic）→ 拷贝时按需反色（B/G/R 通道 255-x）。`OcrOutcome.Preprocess`
+  记录动作，宿主日志 `pre=invert/2x/invert+2x/-`。**探针三用例验证**：
+  白底黑字 25 字符全对（无预处理）；**黑底白字（#1E1E22 深色 IDE 模拟）
+  自动反色后 25 字符全对**（修复前的重灾场景）；60px 矮条 2x 后
+  "TypeError: cannot read property" 全对。Core 218→**226 断言**（+8）。
+  **剩余上限**：引擎无语言纠错（l/1/I、O/0 混淆管不了）+ 语法高亮彩色
+  代码的干扰——预处理后仍不满意的场景，后手=可选云端 OCR Provider
+  （百度 OCR 标准版每月 1000 次免费，用户已有百度云账号；设置项待用户
+  决定后实施）。
+
+## 优化 6：输入翻译模式（2026-09-05）
+
+- **需求**（用户提出，🟢 低成本高收益）：热键唤起输入框，支持多行、回车翻译
+  ——查报错、写注释、起变量名的手动输入场景；UI 与翻译核心现成，只加页面。
+- **实现**：
+  1. **webui 第五页 `input`**：`input.html` + `src/input/{main,App,input.css}`。
+     复用 result 页资产——`DstCard`/`ErrorCard`/`SettingsPopover` 组件与
+     `result.css` 全量引入（按页独立构建互不影响）；type-only import 不增包体
+    （input.html 219KB）。交互：自动聚焦、Enter 翻译 / Shift+Enter 换行、
+     Esc 关窗、字数统计、loading 条/译文卡/错误卡/复制 ✓ 反馈与 result 页同款。
+  2. **协议扩展（v1.5 注记）**：`translate` payload 可为 `["文本"]`（input 页
+     直接携带输入内容）；空数组语义不变。input init = result init 同构 +
+     `preText`（`--open input,文本` 预填并自动翻译一次——自动化路径；热键
+     唤起为空串不自动翻）。
+  3. **宿主**：`HandleTranslate` 优先取 payload 文本（无则 pendingText 暂存）；
+     `PushSelfInit` 加 input 分支；`FindReusableInputWindow` + Program
+     TranslateInput 回调——**重复唤起激活已有窗**（保留输入/译文状态，页面
+     window focus 重新聚焦），不重开不重置；开窗分支 title=输入翻译、590×620、
+     Center；`--open input` 与 result 同路 SetPendingText（首测发现 input 页
+     文本被丢弃致 preText 空，修复）。
+  4. **第三热键**：`HOTKEY_ID_INPUT=0xB00D`（`input_hotkey` 默认 `^!i`，
+     config.conf 14→15 键，文件级配置）+ 托盘「输入翻译」菜单项 + 启动气球
+     三热键文案。csproj 1.6.0→1.7.0，settings chip v1.7，vite PAGES 4→5 页。
+- **测试**：Core 226→**233 断言**（+7：input_hotkey 缺省值/往返/落盘/既有键
+  不受影响）。构建 0 错误。隔离实例 `--open input,The quick brown fox…`：
+  `input-rendered` → `translate 承接（payload 带文本）` → mymemory HTTP 200 →
+  `input-result-rendered` 全链路绿（测试参数被 Start-Process 截断为 "The"
+  textLen=3——脚本引号问题，不影响链路验证）。五页全构建（input 219KB）。
+- **待用户桌面实测**：① ^!I（或托盘菜单）唤起 → 输入 → Enter 翻译 → 译文；
+  ② Shift+Enter 换行；③ 头部语言/提供商 Popover 切换后自动重译；④ 重复
+  唤起激活已有窗（输入内容不丢）；⑤ Esc 关窗；⑥ 复制译文按钮；⑦ 划词
+  ^!H 与截图 ^!Z 行为回归。
+- **已知边界**：input_hotkey 与 shot_hotkey 同为文件级配置（settings 页 UI
+  化为后续项）；热键被占时按设计降级（托盘入口可用，日志 err 记录）。
+- **测试工具留存**：scripts/input-e2e.ps1（--open input 驱动）。
+
+## 优化 7：GitHub Actions CI/CD + 包管理分发（2026-09-05）
+
+- **需求**（用户提出）：build+selftest+Tests+WebUI 全进 CI；tag 自动出
+  Release asset（exe 只放 Release 的既定策略）；winget/scoop 降安装成本。
+- **CI 安全化前置改动**：①selftest 的 WebView2 探测改**软注记**（缺失只打
+  `webview2=not-found` 不判 FAIL——CI runner 无 WebView2 属环境事实；
+  PASS/FAIL 主体=配置读写冒烟；本机正常路径输出版本不变）；②csproj
+  winmd 条件链扩 5 版本（26100/22621/22000/20348/19041，CI 兜底见下）。
+- **实现（全部在 release 仓库）**：
+  1. `.github/workflows/ci.yml`（windows-2022）：checkout → dotnet 8 SDK →
+     node 20 → **显式定位 runner 的 Windows.winmd 并 `-p:WindowsWinMd=` 传参**
+    （csproj 的全局属性优先级高于项目内条件赋值，本地开发不受影响）→ 构建
+     Core/Host/Uia/Tests → `dotnet run --project TranslatorCore.Tests`
+    （**233 断言全离线，无网络 flake**——grep 确认无真实 HTTP 调用）→
+     WebUI 五页（npm ci + TFD_PAGE 循环）→ selftest（uia/ocr 探测行均为
+     环境注记不计 FAIL）→ 产物 artifact。
+  2. `.github/workflows/release.yml`（tag `v*`）：构建+测试 →
+     **`package-release.ps1 -Version $env:GITHUB_REF_NAME`** 组包 →
+     step summary 打印 zip SHA256（scoop/winget manifest 用）→
+     softprops/action-gh-release 挂 asset（generate_release_notes）。
+  3. **`package-release.ps1`（仓库根，本地/CI 双用组包脚本）**：v1.5 布局
+     反推 + 白名单拷贝（宿主 6 文件 + **translator-uia.exe**（优化 5 教训
+     补齐）+ webui dist 5 页 + icon + bat + `packaging/*.txt` 使用说明）；
+     **自检：包内不得出现 pdb/log/conf/translator.exe**（正则拦截，连
+     仓库根被 gitignore 挡住的本地残留 exe 也不会误收）；输出 SHA256。
+  4. `packaging/`：scoop manifest（checkver:github + autoupdate v$version
+     模板，bin=translator-ui.exe shim + 开始菜单快捷方式）、winget 三件套
+    （installer portabale zip NestedInstaller / locale.zh-CN / defaultLocale，
+     schema 1.6.0，hash 发版时填）、`README.md` 分发流程文档（自动化边界
+     表 + scoop 自建 bucket 步骤 + winget-pkgs PR 步骤 + 本地复现命令）。
+- **本地验证（完整模拟 CI 路径）**：仓库内 `dotnet build`（**镜像源码树
+  完整可编译实锤**——0 错误）→ `package-release.ps1` 组包（855KB，
+  17 条目布局正确）→ **zip 冒烟**：解包后从包内 exe 跑隔离实例 →
+  `settings-rendered` 锚点 ✓，隔离 TFD_CONFIG 落 TEMP（真实用户双击 bat
+  会在包内 scripts\ 生成 config.conf，布局正确）。selftest 本机回归
+  PASS（webview2 输出版本、233 断言环境不变）。
+- **已知边界**：①CI runner 的 winmd 依赖 runner-image 预装 SDK——探测
+  失败时 workflow 显式 warning（不静默）；②selftest 的 DPAPI 依赖 runner
+  user profile（actions windows runner 已加载，若首跑红再降级）；
+  ③scoop bucket 仓库建立 / winget-pkgs PR 为人工动作（流程文档化在
+  packaging/README.md；本地 gh CLI 已登录可执行）；④仓库根 translator.exe
+  为 gitignore 挡住的本地残留（8ceb034 "Release asset only" 政策），
+  打包白名单确保不进包。

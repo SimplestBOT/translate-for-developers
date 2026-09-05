@@ -1,0 +1,24 @@
+translate-for-developers 使用说明
+==================================
+
+【启动】双击 start-translator.bat，托盘出现 T 字图标即就绪（约 1-2 秒）。
+
+【划词翻译】任意软件中选中文本 → 按热键 → 译文窗口弹出（默认 Ctrl+Alt+T，
+可托盘菜单「更改热键」直接在键盘上按新组合修改）。
+
+【截图翻译】按 Ctrl+Alt+Z（或托盘菜单「截图翻译」）→ 拖拽框选屏幕区域 →
+松手自动识别翻译。Windows 内置 OCR，免费、离线、零依赖。
+
+【输入翻译】按 Ctrl+Alt+I（或托盘菜单「输入翻译」）→ 多行输入 →
+Enter 翻译（Shift+Enter 换行）。
+
+【翻译服务】托盘菜单切换：MyMemory（免费、无需注册）/ 百度翻译 / DeepL /
+AI 大模型（OpenAI 兼容：OpenAI/DeepSeek/Kimi/智谱/Ollama 等）。密钥在
+「设置」页填写，经 Windows DPAPI 加密落盘，仅本机当前账户可解密。
+
+【退出】托盘图标右键 → 退出。
+
+-----------------------------------------------
+- 便携版不写注册表、不装服务，删除本目录即完全卸载。
+- 首次运行在 scripts\ 目录生成 config.conf（含翻译偏好）。
+- 详细文档：https://github.com/SimplestBOT/translate-for-developers

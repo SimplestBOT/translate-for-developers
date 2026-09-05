@@ -17,3 +17,6 @@ tfd_debug.log
 # Node
 # webui/dist 有意入库：克隆后 dotnet build 即全功能可跑（绿色免安装定位）
 webui/node_modules/
+
+# 本地组包产物（package-release.ps1 输出；zip 只走 GitHub Release asset）
+release-pkg/

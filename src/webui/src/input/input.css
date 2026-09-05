@@ -1,0 +1,23 @@
+/* input.css - 输入翻译页特有样式（优化 6）
+   基础变量/卡片/头部/footer 全部来自 ../result/result.css（main.tsx 同时引入），
+   这里只写输入区与布局覆写——按页独立构建，互不影响。 */
+
+/* 输入区：固定块，flex:none（译文卡 .dstcard 撑满剩余） */
+.inbox{flex:none;display:flex;flex-direction:column;border:1px solid var(--line);
+border-radius:12px;background:var(--card);padding:10px 12px 8px;margin-bottom:10px;
+transition:border-color .18s}
+.inbox:focus-within{border-color:var(--line2);background:var(--card2)}
+.inbox textarea{flex:1;min-height:104px;max-height:260px;resize:none;border:0;outline:0;
+background:transparent;color:var(--text);font:12.5px/1.65 var(--monocjk);
+user-select:text;cursor:text;caret-color:var(--acc)}
+.inbox textarea::placeholder{color:var(--faint);font-family:var(--sans)}
+.inbox-bar{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:6px}
+.inbox-bar .cnt{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+
+/* 译文卡撑满剩余高度（result 页同款卡，这里吃满 .wrap 弹性） */
+.wrap .card.dstcard{flex:1;min-height:0;display:flex;flex-direction:column}
+.wrap .card.dstcard .dstbox{flex:1}
+
+/* 空态提示（idle 且未翻译时占位，与 DstCard 同卡视觉的轻量版） */
+.empty-hint{flex:1;display:grid;place-items:center;color:var(--faint);font-size:12.5px;
+border:1px dashed var(--line);border-radius:12px;margin-bottom:0}
