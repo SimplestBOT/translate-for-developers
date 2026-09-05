@@ -46,6 +46,7 @@ jobs:
           dotnet build src/csharp/TranslatorCore/TranslatorCore.csproj -c Release @p
           dotnet build src/csharp/TranslatorHost/TranslatorHost.csproj -c Release @p
           dotnet build src/csharp/TranslatorUia/TranslatorUia.csproj -c Release
+          dotnet build src/csharp/TranslatorCore.Tests/TranslatorCore.Tests.csproj -c Release
 
       - name: Build WebUI (5 pages)
         shell: bash
